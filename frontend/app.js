@@ -56,66 +56,158 @@ async function loadStats() {
   } catch (e) { console.error('Stats load failed:', e); }
 }
 
+let groupedAccountData = [];
+let activeAccountIdx = 0;
+
 async function loadAccountQuotas() {
   try {
     const data = await fetch(`${API}/api/quotas/grouped`).then(r => r.json());
+    groupedAccountData = data || [];
     const container = document.getElementById('account-quotas-container');
-    if (!data || data.length === 0) {
+    if (!groupedAccountData.length) {
       container.innerHTML = '<div class="empty-state">导入账号后将显示配额和积分信息</div>';
       return;
     }
-    container.innerHTML = data.map(acct => renderAccountCard(acct)).join('');
+    if (activeAccountIdx >= groupedAccountData.length) activeAccountIdx = 0;
+    renderAccountTabs();
   } catch (e) { console.error('Grouped quotas failed:', e); }
 }
 
-function renderAccountCard(acct) {
+function renderAccountTabs() {
+  const container = document.getElementById('account-quotas-container');
+  const tabsHtml = groupedAccountData.map((acct, i) => {
+    const tier = acct.subscription_tier || 'FREE';
+    const tierClass = tier === 'ULTRA' ? 'tier-ULTRA' : tier === 'PRO' ? 'tier-PRO' : 'tier-FREE';
+    const initial = (acct.email || '?')[0].toUpperCase();
+    const active = i === activeAccountIdx;
+    return `<button class="acct-tab ${active ? 'active' : ''}" onclick="switchAccountTab(${i})">
+      <span class="acct-tab-avatar">${initial}</span>
+      <span class="acct-tab-email">${acct.email.split('@')[0]}</span>
+      <span class="tier-badge ${tierClass}" style="font-size:9px;padding:1px 5px;">${tier}</span>
+    </button>`;
+  }).join('');
+
+  const acct = groupedAccountData[activeAccountIdx];
+  container.innerHTML = `
+    <div class="acct-tabs-bar">${tabsHtml}</div>
+    ${renderAccountDetail(acct)}`;
+}
+
+function switchAccountTab(idx) {
+  activeAccountIdx = idx;
+  renderAccountTabs();
+}
+
+function renderAccountDetail(acct) {
   const tier = acct.subscription_tier || 'FREE';
   const tierClass = tier === 'ULTRA' ? 'tier-ULTRA' : tier === 'PRO' ? 'tier-PRO' : 'tier-FREE';
-  const initial = (acct.email || '?')[0].toUpperCase();
   const credits = acct.credits;
-  const creditsEnabled = credits && credits.credits_enabled;
-  const creditsAmount = credits ? credits.credit_amount : 0;
-  const creditsExhausted = credits && credits.credits_exhausted;
 
+  // ---- Credits Section ----
   let creditsHtml = '';
   if (credits) {
-    const statusClass = creditsExhausted ? 'credits-exhausted' : creditsEnabled ? 'credits-active' : 'credits-disabled';
-    const statusText = creditsExhausted ? '已耗尽' : creditsEnabled ? '已启用' : '未启用';
+    const enabled = credits.credits_enabled;
+    const exhausted = credits.credits_exhausted;
+    const amount = credits.credit_amount || 0;
+    const minUsage = credits.minimum_for_usage || 0;
+    const statusClass = exhausted ? 'exhausted' : enabled ? 'active' : 'disabled';
+    const statusIcon = exhausted ? '🔴' : enabled ? '🟢' : '⚪';
+    const statusLabel = exhausted ? '已耗尽' : enabled ? '可用' : '未启用';
+    const exhaustedUntil = credits.credits_exhausted_until
+      ? `<span class="credits-reset">恢复时间: ${new Date(credits.credits_exhausted_until).toLocaleString()}</span>` : '';
+
     creditsHtml = `
-      <div class="acct-credits-info ${statusClass}">
-        <span class="credits-badge">${statusText}</span>
-        ${creditsAmount > 0 ? `<span class="credits-amount">¤ ${creditsAmount.toFixed(2)}</span>` : ''}
-        <span class="credits-tier">${credits.credit_type || 'GOOGLE_ONE_AI'}</span>
+      <div class="credits-panel">
+        <div class="credits-panel-header">
+          <span class="credits-panel-title">💳 AI Credits</span>
+          <span class="credits-status-pill ${statusClass}">${statusIcon} ${statusLabel}</span>
+        </div>
+        <div class="credits-detail-grid">
+          <div class="credits-detail-item">
+            <div class="credits-detail-label">类型</div>
+            <div class="credits-detail-value">${credits.credit_type || 'GOOGLE_ONE_AI'}</div>
+          </div>
+          <div class="credits-detail-item">
+            <div class="credits-detail-label">订阅等级</div>
+            <div class="credits-detail-value"><span class="tier-badge ${tierClass}">${tier}</span></div>
+          </div>
+          <div class="credits-detail-item">
+            <div class="credits-detail-label">余额</div>
+            <div class="credits-detail-value credits-amount-lg">${amount > 0 ? '¤ ' + amount.toFixed(2) : '—'}</div>
+          </div>
+          <div class="credits-detail-item">
+            <div class="credits-detail-label">最低使用额</div>
+            <div class="credits-detail-value">${minUsage > 0 ? '¤ ' + minUsage.toFixed(2) : '—'}</div>
+          </div>
+        </div>
+        ${exhaustedUntil}
       </div>`;
   }
 
-  const quotasHtml = acct.quotas.length > 0
-    ? `<div class="acct-quota-grid">${acct.quotas.map(q => {
-        const pct = 100 - q.utilization;
-        const color = pct > 60 ? '#22c55e' : pct > 20 ? '#f59e0b' : '#ef4444';
-        return `<div class="acct-quota-item">
-          <div class="acct-quota-name">${q.model}</div>
-          <div class="acct-quota-bar"><div class="acct-quota-fill" style="width:${pct}%;background:${color}"></div></div>
-          <div class="acct-quota-pct">${pct}%</div>
+  // ---- Group models by category ----
+  const categories = categorizeModels(acct.quotas);
+  let quotasHtml = '';
+  if (acct.quotas.length > 0) {
+    quotasHtml = categories.map(cat => {
+      if (!cat.models.length) return '';
+      return `
+        <div class="model-category">
+          <div class="model-category-header">
+            <span class="model-category-icon">${cat.icon}</span>
+            <span class="model-category-name">${cat.name}</span>
+            <span class="model-category-count">${cat.models.length} 个模型</span>
+          </div>
+          <div class="model-category-grid">
+            ${cat.models.map(q => {
+              const pct = 100 - q.utilization;
+              const barColor = pct > 60 ? 'var(--quota-green)' : pct > 20 ? 'var(--quota-amber)' : 'var(--quota-red)';
+              const pctColor = pct > 60 ? '#16a34a' : pct > 20 ? '#d97706' : '#dc2626';
+              return `<div class="model-quota-row">
+                <div class="model-quota-name" title="${q.model}">${q.model}</div>
+                <div class="model-quota-bar-wrap">
+                  <div class="model-quota-bar-bg">
+                    <div class="model-quota-bar-fill" style="width:${pct}%;background:${barColor}"></div>
+                  </div>
+                </div>
+                <div class="model-quota-pct" style="color:${pctColor}">${pct}%</div>
+              </div>`;
+            }).join('')}
+          </div>
         </div>`;
-      }).join('')}</div>`
-    : '<div class="empty-state" style="padding:12px;font-size:12px;">暂无配额数据 — 点击顶部「刷新」按钮拉取</div>';
+    }).filter(Boolean).join('');
+  } else {
+    quotasHtml = '<div class="empty-state" style="padding:16px;font-size:12px;">暂无配额数据 — 点击「刷新」拉取</div>';
+  }
 
   return `
-    <div class="account-quota-card">
-      <div class="acct-card-header">
-        <div class="acct-avatar">${initial}</div>
-        <div class="acct-card-info">
-          <div class="acct-card-email">${acct.email}</div>
-          <div class="acct-card-meta">
-            <span class="tier-badge ${tierClass}">${tier}</span>
-            <span class="acct-project">${acct.project_id || '—'}</span>
-          </div>
-        </div>
-        ${creditsHtml}
+    <div class="acct-detail-panel">
+      <div class="acct-detail-header">
+        <div class="acct-detail-email">${acct.email}</div>
+        <div class="acct-detail-meta">Project: <code>${acct.project_id || '—'}</code></div>
       </div>
-      ${quotasHtml}
+      ${creditsHtml}
+      <div class="acct-models-section">
+        <div class="acct-models-title">📊 模型配额 <span class="acct-models-total">${acct.quotas.length} 个模型</span></div>
+        ${quotasHtml}
+      </div>
     </div>`;
+}
+
+function categorizeModels(quotas) {
+  const cats = [
+    { name: 'Gemini', icon: '◆', prefix: 'gemini', models: [] },
+    { name: 'Claude', icon: '⌘', prefix: 'claude', models: [] },
+    { name: 'GPT / OpenAI', icon: '▶', prefix: 'gpt', models: [] },
+    { name: '其他', icon: '⚙', prefix: '', models: [] },
+  ];
+  quotas.forEach(q => {
+    const m = q.model.toLowerCase();
+    if (m.startsWith('gemini')) cats[0].models.push(q);
+    else if (m.startsWith('claude')) cats[1].models.push(q);
+    else if (m.startsWith('gpt')) cats[2].models.push(q);
+    else cats[3].models.push(q);
+  });
+  return cats;
 }
 
 // ---- Models ----
