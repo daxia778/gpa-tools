@@ -68,6 +68,13 @@ fn main() {
         // Quotas
         .route("/api/quotas", get(api::get_quotas))
         .route("/api/quotas/refresh", post(api::refresh_quotas))
+        .route("/api/quotas/grouped", get(api::get_quotas_grouped))
+        // Usage logs (traffic monitor)
+        .route("/api/usage-logs", get(api::get_usage_logs))
+        .route("/api/usage-logs/clear", post(api::clear_usage_logs))
+        // API Key
+        .route("/api/api-key", get(api::get_api_key))
+        .route("/api/api-key/generate", post(api::generate_api_key))
         // Sync & Config
         .route("/api/sync-accounts", post(api::sync_accounts))
         .route("/api/config", get(api::get_config).post(api::save_config))

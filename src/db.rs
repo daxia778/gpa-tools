@@ -457,4 +457,152 @@ impl Database {
         conn.execute("DELETE FROM accounts WHERE account_id = ?1", params![account_id]).ok();
         conn.execute("DELETE FROM account_credits WHERE account_id = ?1", params![account_id]).ok();
     }
+
+    // ---- Grouped Quota Query ----
+
+    pub fn get_quotas_grouped(&self) -> Vec<GroupedAccountQuota> {
+        let conn = self.conn.lock().unwrap();
+        let accounts: Vec<Account> = {
+            let mut stmt = conn.prepare(
+                "SELECT account_id, email, name, refresh_token, access_token, expires_at, project_id, subscription_tier, status, created_at, updated_at FROM accounts ORDER BY email"
+            ).unwrap();
+            stmt.query_map([], |row| {
+                Ok(Account {
+                    account_id: row.get(0)?, email: row.get(1)?,
+                    name: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                    refresh_token: row.get(3)?, access_token: row.get(4)?,
+                    expires_at: row.get(5)?,
+                    project_id: row.get::<_, Option<String>>(6)?.unwrap_or_default(),
+                    subscription_tier: row.get(7)?,
+                    status: row.get::<_, Option<String>>(8)?.unwrap_or("active".into()),
+                    created_at: row.get(9)?, updated_at: row.get(10)?,
+                })
+            }).unwrap().filter_map(|r| r.ok()).collect()
+        };
+
+        let mut results = vec![];
+        for acct in accounts {
+            // Get credits
+            let credits = conn.query_row(
+                "SELECT credits_enabled, credits_exhausted, credit_type, credit_amount, minimum_for_usage, subscription_tier FROM account_credits WHERE account_id = ?1",
+                params![acct.account_id],
+                |row| Ok(AccountCredits {
+                    account_id: acct.account_id.clone(), email: acct.email.clone(),
+                    credits_enabled: row.get::<_, i32>(0)? != 0,
+                    credits_exhausted: row.get::<_, i32>(1)? != 0,
+                    credit_type: row.get(2)?, credit_amount: row.get(3)?,
+                    minimum_for_usage: row.get(4)?, subscription_tier: row.get(5)?,
+                    ..Default::default()
+                }),
+            ).ok();
+
+            // Get quotas
+            let mut stmt = conn.prepare(
+                "SELECT qs.model_name, qs.utilization, qs.reset_time, qs.is_forbidden
+                 FROM quota_snapshots qs
+                 INNER JOIN (SELECT account_id, model_name, MAX(created_at) as latest FROM quota_snapshots WHERE account_id = ?1 GROUP BY model_name) latest
+                 ON qs.account_id = latest.account_id AND qs.model_name = latest.model_name AND qs.created_at = latest.latest
+                 ORDER BY qs.utilization DESC, qs.model_name"
+            ).unwrap();
+            let quotas: Vec<ModelQuotaCompact> = stmt.query_map(params![acct.account_id], |row| {
+                Ok(ModelQuotaCompact {
+                    model: row.get(0)?, utilization: row.get(1)?,
+                    remaining: 100 - row.get::<_, i32>(1)?,
+                    reset_time: row.get(2)?,
+                    is_forbidden: row.get::<_, i32>(3)? != 0,
+                })
+            }).unwrap().filter_map(|r| r.ok()).collect();
+
+            results.push(GroupedAccountQuota {
+                account_id: acct.account_id,
+                email: acct.email,
+                name: acct.name,
+                status: acct.status,
+                subscription_tier: acct.subscription_tier,
+                project_id: acct.project_id,
+                credits,
+                quotas,
+            });
+        }
+        results
+    }
+
+    // ---- Usage Logs (paginated) ----
+
+    pub fn get_usage_logs_paginated(&self, limit: i64, offset: i64, filter: &str, errors_only: bool) -> Vec<UsageLog> {
+        let conn = self.conn.lock().unwrap();
+        let mut conditions = vec!["1=1".to_string()];
+        let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = vec![];
+
+        if errors_only {
+            conditions.push("status_code >= 400".into());
+        }
+        if !filter.is_empty() {
+            conditions.push("(model LIKE ?1 OR account_email LIKE ?1 OR trace_id LIKE ?1)".into());
+            params_vec.push(Box::new(format!("%{}%", filter)));
+        }
+
+        let sql = format!(
+            "SELECT trace_id, account_email, model, upstream_model, status_code, credits_used, input_tokens, output_tokens, latency_ms, error_text, created_at
+             FROM usage_logs WHERE {} ORDER BY created_at DESC LIMIT {} OFFSET {}",
+            conditions.join(" AND "), limit, offset
+        );
+
+        let mut stmt = conn.prepare(&sql).unwrap();
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
+        stmt.query_map(param_refs.as_slice(), |row| {
+            Ok(UsageLog {
+                trace_id: row.get(0)?, account_email: row.get(1)?,
+                model: row.get(2)?, upstream_model: row.get(3)?,
+                status_code: row.get(4)?, credits_used: row.get::<_, i32>(5)? != 0,
+                input_tokens: row.get(6)?, output_tokens: row.get(7)?,
+                latency_ms: row.get(8)?, error_text: row.get(9)?,
+            })
+        }).unwrap().filter_map(|r| r.ok()).collect()
+    }
+
+    pub fn get_usage_log_count(&self, filter: &str, errors_only: bool) -> i64 {
+        let conn = self.conn.lock().unwrap();
+        let mut conditions = vec!["1=1".to_string()];
+        let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = vec![];
+
+        if errors_only { conditions.push("status_code >= 400".into()); }
+        if !filter.is_empty() {
+            conditions.push("(model LIKE ?1 OR account_email LIKE ?1 OR trace_id LIKE ?1)".into());
+            params_vec.push(Box::new(format!("%{}%", filter)));
+        }
+
+        let sql = format!("SELECT COUNT(*) FROM usage_logs WHERE {}", conditions.join(" AND "));
+        let mut stmt = conn.prepare(&sql).unwrap();
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
+        stmt.query_row(param_refs.as_slice(), |row| row.get(0)).unwrap_or(0)
+    }
+
+    pub fn clear_usage_logs(&self) {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM usage_logs", []).ok();
+    }
+}
+
+// ---- New structs for grouped queries ----
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ModelQuotaCompact {
+    pub model: String,
+    pub utilization: i32,
+    pub remaining: i32,
+    pub reset_time: Option<String>,
+    pub is_forbidden: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GroupedAccountQuota {
+    pub account_id: String,
+    pub email: String,
+    pub name: String,
+    pub status: String,
+    pub subscription_tier: Option<String>,
+    pub project_id: String,
+    pub credits: Option<AccountCredits>,
+    pub quotas: Vec<ModelQuotaCompact>,
 }

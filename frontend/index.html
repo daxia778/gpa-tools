@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <!-- Navbar (AT 风格: Logo | 胶囊导航 | 工具按钮) -->
+  <!-- Navbar -->
   <header id="app-header">
     <div class="header-inner">
       <div class="header-left">
@@ -24,6 +24,7 @@
         <nav class="nav-pills">
           <button class="nav-pill active" data-page="dashboard">仪表盘</button>
           <button class="nav-pill" data-page="accounts">账号管理</button>
+          <button class="nav-pill" data-page="toolbox">工具箱</button>
         </nav>
       </div>
 
@@ -82,43 +83,31 @@
         </div>
       </section>
 
-      <!-- Two-Column Layout -->
-      <div class="two-col">
-        <!-- Model Distribution -->
-        <section class="section card" id="section-models">
+      <!-- Per-Account Quotas + Credits (分账号展示) -->
+      <section class="section" id="section-account-quotas">
+        <div class="section-title-row">
           <h2 class="section-title">
-            <svg class="icon-cyan" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
-            模型使用分布
+            <svg class="icon-green" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+            账号配额 &amp; Credits
           </h2>
-          <div id="model-list" class="model-list">
-            <div class="empty-state">暂无模型使用数据</div>
-          </div>
-        </section>
+          <button id="btn-refresh-quotas" class="btn btn-outline btn-sm" title="刷新配额">
+            <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            刷新
+          </button>
+        </div>
+        <div id="account-quotas-container">
+          <div class="empty-state">导入账号后将显示配额和积分信息</div>
+        </div>
+      </section>
 
-        <!-- Credits Management -->
-        <section class="section card" id="section-credits">
-          <h2 class="section-title">
-            <svg class="icon-amber" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            AI Credits 管理
-            <button id="btn-sync-accounts" class="btn btn-outline btn-sm" title="从 AT 同步账号">
-              <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-              同步
-            </button>
-          </h2>
-          <div id="credits-list" class="credits-list">
-            <div class="empty-state">点击"同步"从 AT Manager 导入账号</div>
-          </div>
-        </section>
-      </div>
-
-      <!-- Quota Display -->
-      <section class="section card" id="section-quotas">
+      <!-- Model Distribution -->
+      <section class="section card" id="section-models">
         <h2 class="section-title">
-          <svg class="icon-green" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
-          实时模型配额
+          <svg class="icon-cyan" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+          模型使用分布
         </h2>
-        <div id="quota-grid" class="quota-grid">
-          <div class="empty-state">暂无配额数据</div>
+        <div id="model-list" class="model-list">
+          <div class="empty-state">暂无模型使用数据</div>
         </div>
       </section>
 
@@ -132,35 +121,10 @@
           <div class="empty-state">暂无趋势数据</div>
         </div>
       </section>
-
-      <!-- Recent Errors -->
-      <section class="section card" id="section-errors">
-        <h2 class="section-title">
-          <svg class="icon-red" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
-          最近错误
-        </h2>
-        <div id="error-list" class="error-list">
-          <div class="empty-state">无错误记录</div>
-        </div>
-      </section>
-
-      <!-- Quick Links (AT 彩色底风格) -->
-      <div class="action-links">
-        <a class="action-link" href="http://localhost:8045" target="_blank">
-          <span class="action-link-text">打开 AT Manager</span>
-          <span class="action-link-arrow">→</span>
-        </a>
-        <a class="action-link" href="http://localhost:8080" target="_blank">
-          <span class="action-link-text">打开 Sub2API 面板</span>
-          <span class="action-link-arrow">→</span>
-        </a>
-      </div>
     </div>
 
     <!-- ==================== PAGE: ACCOUNTS ==================== -->
     <div id="page-accounts" class="page-container hidden">
-
-      <!-- Page Header with Import Button -->
       <div class="page-title-row">
         <h1 class="page-title">账号管理</h1>
         <div style="display:flex;gap:8px;">
@@ -171,7 +135,6 @@
         </div>
       </div>
 
-      <!-- Accounts Stats Summary -->
       <div class="stats-grid" id="accounts-stats">
         <div class="stat-card">
           <div class="stat-icon-wrap blue">
@@ -204,7 +167,6 @@
         </div>
       </div>
 
-      <!-- Accounts List -->
       <section class="section card" id="section-accounts">
         <h2 class="section-title">
           <svg class="icon-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
@@ -216,6 +178,88 @@
         </div>
       </section>
     </div>
+
+    <!-- ==================== PAGE: TOOLBOX ==================== -->
+    <div id="page-toolbox" class="page-container hidden">
+      <div class="page-title-row">
+        <h1 class="page-title">工具箱</h1>
+      </div>
+
+      <!-- Proxy Status + API Key -->
+      <section class="section card" id="section-proxy-status">
+        <h2 class="section-title">
+          <svg class="icon-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/></svg>
+          反代服务
+        </h2>
+        <div class="proxy-status-grid">
+          <div class="proxy-endpoint-card">
+            <div class="endpoint-protocol">OpenAI 协议</div>
+            <div class="endpoint-url" id="proxy-openai-url">http://localhost:8600/v1</div>
+            <button class="btn btn-sm btn-outline copy-btn" data-url="http://localhost:8600/v1">复制</button>
+          </div>
+          <div class="proxy-endpoint-card">
+            <div class="endpoint-protocol">Anthropic 协议</div>
+            <div class="endpoint-url" id="proxy-anthropic-url">http://localhost:8600/anthropic</div>
+            <button class="btn btn-sm btn-outline copy-btn" data-url="http://localhost:8600/anthropic">复制</button>
+          </div>
+          <div class="proxy-endpoint-card">
+            <div class="endpoint-protocol">Gemini 协议</div>
+            <div class="endpoint-url" id="proxy-gemini-url">http://localhost:8600/gemini</div>
+            <button class="btn btn-sm btn-outline copy-btn" data-url="http://localhost:8600/gemini">复制</button>
+          </div>
+        </div>
+        <div class="api-key-section">
+          <div class="api-key-label">API Key</div>
+          <div class="api-key-row">
+            <code id="api-key-display" class="api-key-code">—</code>
+            <button id="btn-copy-key" class="btn btn-sm btn-outline" title="复制">复制</button>
+            <button id="btn-gen-key" class="btn btn-sm btn-primary" title="生成新 Key">生成</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- CLI Quick Config -->
+      <section class="section" id="section-cli-config">
+        <h2 class="section-title" style="margin-bottom:12px;">
+          <svg class="icon-purple" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          CLI 一键配置
+        </h2>
+        <div class="cli-cards-grid" id="cli-cards"></div>
+      </section>
+
+      <!-- Traffic Monitor -->
+      <section class="section card" id="section-traffic">
+        <div class="section-title-row">
+          <h2 class="section-title">
+            <svg class="icon-cyan" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            请求流量监控
+          </h2>
+          <div class="traffic-controls">
+            <div class="quick-filters" id="traffic-filters"></div>
+            <button id="btn-clear-logs" class="btn btn-sm btn-outline btn-danger" title="清空日志">清空</button>
+          </div>
+        </div>
+        <div class="traffic-table-wrap">
+          <table class="traffic-table" id="traffic-table">
+            <thead>
+              <tr>
+                <th style="width:55px">状态码</th>
+                <th style="width:180px">模型</th>
+                <th style="width:150px">账号</th>
+                <th style="width:70px;text-align:right">延迟</th>
+                <th style="width:60px;text-align:right">Tokens</th>
+                <th style="width:80px;text-align:right">时间</th>
+              </tr>
+            </thead>
+            <tbody id="traffic-body">
+              <tr><td colspan="6" class="empty-state">暂无请求记录</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="traffic-pagination" id="traffic-pagination"></div>
+      </section>
+    </div>
+
   </main>
 
   <!-- Settings Modal -->

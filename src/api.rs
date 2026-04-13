@@ -322,6 +322,58 @@ pub async fn refresh_quotas(State(state): State<AppState>) -> impl IntoResponse 
     })))
 }
 
+// ---- Grouped Quotas (账号分组配额+积分) ----
+
+pub async fn get_quotas_grouped(State(state): State<AppState>) -> Json<Value> {
+    let grouped = state.db.get_quotas_grouped();
+    Json(serde_json::to_value(grouped).unwrap_or(json!([])))
+}
+
+// ---- Usage Logs (请求流量监控) ----
+
+#[derive(Deserialize)]
+pub struct UsageLogsQuery {
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+    pub filter: Option<String>,
+    pub errors_only: Option<bool>,
+}
+
+pub async fn get_usage_logs(State(state): State<AppState>, Query(q): Query<UsageLogsQuery>) -> Json<Value> {
+    let limit = q.limit.unwrap_or(50).min(500);
+    let offset = q.offset.unwrap_or(0);
+    let filter = q.filter.unwrap_or_default();
+    let errors_only = q.errors_only.unwrap_or(false);
+
+    let logs = state.db.get_usage_logs_paginated(limit, offset, &filter, errors_only);
+    let total = state.db.get_usage_log_count(&filter, errors_only);
+
+    Json(json!({
+        "logs": logs,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }))
+}
+
+pub async fn clear_usage_logs(State(state): State<AppState>) -> Json<Value> {
+    state.db.clear_usage_logs();
+    Json(json!({ "ok": true }))
+}
+
+// ---- API Key ----
+
+pub async fn get_api_key(State(state): State<AppState>) -> Json<Value> {
+    let key = state.db.get_config("api_key").unwrap_or_default();
+    Json(json!({ "api_key": key }))
+}
+
+pub async fn generate_api_key(State(state): State<AppState>) -> Json<Value> {
+    let key = format!("gpa-{}", &uuid::Uuid::new_v4().to_string().replace("-", "")[..24]);
+    state.db.set_config("api_key", &key);
+    Json(json!({ "ok": true, "api_key": key }))
+}
+
 // ---- Sync from AT Manager ----
 
 pub async fn sync_accounts(State(state): State<AppState>) -> impl IntoResponse {
