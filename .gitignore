@@ -1,0 +1,30 @@
+# Build artifacts
+/target/
+debug/
+release/
+
+# Environment (contains secrets)
+.env
+
+# Rust
+**/*.rs.bk
+Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+*.app
+
+# Database
+*.db
+*.db-wal
+*.db-shm
+
+# Logs
+*.log

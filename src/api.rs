@@ -1,0 +1,369 @@
+// ============================================================
+// NexusGate — REST API 路由
+// 完整移植自 server.js 的所有 API 端点
+// ============================================================
+
+use axum::{
+    extract::{Path, Query, State},
+    http::StatusCode,
+    response::{Html, IntoResponse},
+    Json,
+};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use crate::{db::{Account, AccountCredits}, oauth, quota, AppState};
+
+// ---- Query params ----
+
+#[derive(Deserialize)]
+pub struct StatsQuery {
+    pub hours: Option<i32>,
+}
+
+// ---- Stats ----
+
+pub async fn get_stats(State(state): State<AppState>, Query(q): Query<StatsQuery>) -> Json<Value> {
+    let hours = q.hours.unwrap_or(24);
+    let stats = state.db.get_usage_stats(hours);
+    Json(serde_json::to_value(stats).unwrap_or(json!({})))
+}
+
+// ---- Credits ----
+
+pub async fn get_credits(State(state): State<AppState>) -> Json<Value> {
+    let credits = state.db.get_all_account_credits();
+    Json(serde_json::to_value(credits).unwrap_or(json!([])))
+}
+
+#[derive(Deserialize)]
+pub struct ToggleBody {
+    pub enabled: bool,
+}
+
+pub async fn toggle_credits(
+    State(state): State<AppState>,
+    Path(account_id): Path<String>,
+    Json(body): Json<ToggleBody>,
+) -> Json<Value> {
+    state.db.toggle_credits(&account_id, body.enabled);
+    Json(json!({ "ok": true, "account_id": account_id, "credits_enabled": body.enabled }))
+}
+
+pub async fn clear_credits_exhausted(
+    State(state): State<AppState>,
+    Path(account_id): Path<String>,
+) -> Json<Value> {
+    state.db.clear_credits_exhausted(&account_id);
+    Json(json!({ "ok": true, "account_id": account_id }))
+}
+
+// ---- Import Tokens ----
+
+#[derive(Deserialize)]
+pub struct ImportTokensBody {
+    pub tokens: Vec<Value>,
+}
+
+#[derive(Serialize)]
+struct ImportResult {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    email: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    account_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tier: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    credits: Option<f64>,
+    status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    refresh_token: Option<String>,
+}
+
+pub async fn import_tokens(
+    State(state): State<AppState>,
+    Json(body): Json<ImportTokensBody>,
+) -> Json<Value> {
+    let mut results: Vec<ImportResult> = vec![];
+
+    for token_val in &body.tokens {
+        let refresh_token = match token_val {
+            Value::String(s) => s.trim().to_string(),
+            Value::Object(o) => o.get("refresh_token")
+                .and_then(|v| v.as_str())
+                .unwrap_or("").trim().to_string(),
+            _ => String::new(),
+        };
+
+        if refresh_token.is_empty() {
+            results.push(ImportResult {
+                status: "skipped".into(), error: Some("空 token".into()),
+                refresh_token: Some("(empty)".into()),
+                ..Default::default()
+            });
+            continue;
+        }
+
+        tracing::info!("🔑 [Import] Validating token: {}...", &refresh_token[..refresh_token.len().min(20)]);
+
+        // 1. Refresh token
+        let token_resp = match oauth::refresh_access_token(&refresh_token).await {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::error!("❌ [Import] Token failed: {}", e);
+                results.push(ImportResult {
+                    status: "error".into(), error: Some(e),
+                    refresh_token: Some(format!("{}...", &refresh_token[..refresh_token.len().min(20)])),
+                    ..Default::default()
+                });
+                continue;
+            }
+        };
+
+        // 2. Get user info
+        let user_info = match oauth::get_user_info(&token_resp.access_token).await {
+            Ok(u) => u,
+            Err(e) => {
+                results.push(ImportResult {
+                    status: "error".into(), error: Some(e),
+                    refresh_token: Some(format!("{}...", &refresh_token[..refresh_token.len().min(20)])),
+                    ..Default::default()
+                });
+                continue;
+            }
+        };
+
+        // 3. Get subscription info
+        let sub_info = quota::fetch_subscription_info(&token_resp.access_token).await;
+
+        // 4. Generate account_id
+        let account_id = format!("bridge_{}", user_info.email.replace(|c: char| !c.is_alphanumeric(), "_"));
+
+        // 5. Save to DB
+        let expires_at = chrono::Utc::now() + chrono::Duration::seconds(token_resp.expires_in);
+        state.db.upsert_account(&Account {
+            account_id: account_id.clone(),
+            email: user_info.email.clone(),
+            name: user_info.name.unwrap_or_default(),
+            refresh_token: refresh_token.clone(),
+            access_token: Some(token_resp.access_token),
+            expires_at: Some(expires_at.to_rfc3339()),
+            project_id: sub_info.project_id.unwrap_or_default(),
+            subscription_tier: sub_info.tier.clone(),
+            status: "active".into(),
+            ..Default::default()
+        });
+
+        // 6. Sync credits
+        if let Some(credit) = sub_info.credits.first() {
+            state.db.upsert_account_credits(&AccountCredits {
+                account_id: account_id.clone(),
+                email: user_info.email.clone(),
+                credits_enabled: true,
+                credit_type: Some(credit.credit_type.clone()),
+                credit_amount: credit.credit_amount,
+                minimum_for_usage: credit.minimum_for_usage,
+                subscription_tier: sub_info.tier.clone(),
+                ..Default::default()
+            });
+        }
+
+        tracing::info!("✅ [Import] {} ({}) imported successfully", user_info.email, sub_info.tier.as_deref().unwrap_or("FREE"));
+        results.push(ImportResult {
+            email: Some(user_info.email),
+            account_id: Some(account_id),
+            tier: Some(sub_info.tier.unwrap_or("FREE".into())),
+            credits: sub_info.credits.first().map(|c| c.credit_amount),
+            status: "success".into(),
+            ..Default::default()
+        });
+    }
+
+    let success = results.iter().filter(|r| r.status == "success").count();
+    let failed = results.iter().filter(|r| r.status == "error").count();
+
+    Json(json!({
+        "ok": true,
+        "total": body.tokens.len(),
+        "success": success,
+        "failed": failed,
+        "results": results,
+    }))
+}
+
+impl Default for ImportResult {
+    fn default() -> Self {
+        Self {
+            email: None, account_id: None, tier: None, credits: None,
+            status: String::new(), error: None, refresh_token: None,
+        }
+    }
+}
+
+// ---- Accounts ----
+
+pub async fn get_accounts(State(state): State<AppState>) -> Json<Value> {
+    let accounts = state.db.get_all_accounts();
+    Json(serde_json::to_value(accounts).unwrap_or(json!([])))
+}
+
+pub async fn delete_account(
+    State(state): State<AppState>,
+    Path(account_id): Path<String>,
+) -> Json<Value> {
+    state.db.delete_account(&account_id);
+    Json(json!({ "ok": true }))
+}
+
+pub async fn refresh_account(
+    State(state): State<AppState>,
+    Path(account_id): Path<String>,
+) -> impl IntoResponse {
+    let accounts = state.db.get_all_accounts();
+    let account = match accounts.iter().find(|a| a.account_id == account_id) {
+        Some(a) => a.clone(),
+        None => return (StatusCode::NOT_FOUND, Json(json!({ "error": "Account not found" }))),
+    };
+
+    match oauth::refresh_access_token(&account.refresh_token).await {
+        Ok(token_resp) => {
+            let expires_at = chrono::Utc::now() + chrono::Duration::seconds(token_resp.expires_in);
+            state.db.upsert_account(&Account {
+                access_token: Some(token_resp.access_token),
+                expires_at: Some(expires_at.to_rfc3339()),
+                status: "active".into(),
+                ..account
+            });
+            (StatusCode::OK, Json(json!({ "ok": true, "email": account_id, "expires_in": token_resp.expires_in })))
+        }
+        Err(e) => {
+            state.db.upsert_account(&Account { status: "error".into(), ..account });
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e })))
+        }
+    }
+}
+
+// ---- Quotas ----
+
+pub async fn get_quotas(State(state): State<AppState>) -> Json<Value> {
+    let snapshots = state.db.get_latest_quota_snapshots();
+    Json(serde_json::to_value(snapshots).unwrap_or(json!([])))
+}
+
+// ---- Sync from AT Manager ----
+
+pub async fn sync_accounts(State(state): State<AppState>) -> impl IntoResponse {
+    let at_url = state.db.get_config("at_proxy_url").unwrap_or_else(|| "http://127.0.0.1:8045".into());
+    let client = reqwest::Client::new();
+
+    match client.get(format!("{}/admin/accounts", at_url))
+        .timeout(std::time::Duration::from_secs(10))
+        .send().await
+    {
+        Ok(resp) if resp.status().is_success() => {
+            let data: Value = resp.json().await.unwrap_or(json!({}));
+            let accounts = data.get("accounts").or(Some(&data))
+                .and_then(|v| v.as_array());
+            let mut synced = 0;
+            if let Some(arr) = accounts {
+                for acc in arr {
+                    state.db.upsert_account_credits(&AccountCredits {
+                        account_id: acc.get("id").or(acc.get("account_id")).and_then(|v| v.as_str()).unwrap_or("").into(),
+                        email: acc.get("email").and_then(|v| v.as_str()).unwrap_or("").into(),
+                        credits_enabled: acc.get("credits_enabled").and_then(|v| v.as_bool()).unwrap_or(false),
+                        credits_exhausted: acc.get("credits_exhausted").and_then(|v| v.as_bool()).unwrap_or(false),
+                        subscription_tier: acc.get("subscription_tier").and_then(|v| v.as_str()).map(|s| s.into()),
+                        ..Default::default()
+                    });
+                    synced += 1;
+                }
+            }
+            (StatusCode::OK, Json(json!({ "ok": true, "synced": synced })))
+        }
+        Ok(resp) => (StatusCode::BAD_GATEWAY, Json(json!({ "error": format!("AT returned {}", resp.status()) }))),
+        Err(e) => (StatusCode::BAD_GATEWAY, Json(json!({ "error": e.to_string() }))),
+    }
+}
+
+// ---- Config ----
+
+pub async fn get_config(State(state): State<AppState>) -> Json<Value> {
+    let all = state.db.get_all_config();
+    let mut map = serde_json::Map::new();
+    for row in all { map.insert(row.key, json!(row.value)); }
+    Json(Value::Object(map))
+}
+
+pub async fn save_config(
+    State(state): State<AppState>,
+    Json(body): Json<Value>,
+) -> Json<Value> {
+    if let Some(obj) = body.as_object() {
+        for (key, value) in obj {
+            state.db.set_config(key, value.as_str().unwrap_or(&value.to_string()));
+        }
+    }
+    Json(json!({ "ok": true }))
+}
+
+// ---- Health ----
+
+pub async fn health(State(state): State<AppState>) -> Json<Value> {
+    let at_url = state.db.get_config("at_proxy_url").unwrap_or_else(|| "http://127.0.0.1:8045".into());
+    let client = reqwest::Client::new();
+
+    let at_status = match client.get(format!("{}/health", at_url))
+        .timeout(std::time::Duration::from_secs(3))
+        .send().await
+    {
+        Ok(r) if r.status().is_success() => "online".to_string(),
+        Ok(r) => format!("error:{}", r.status()),
+        Err(_) => "offline".to_string(),
+    };
+
+    let uptime = state.start_time.elapsed().as_secs();
+
+    Json(json!({
+        "bridge": "online",
+        "port": 8600,
+        "at_proxy": at_status,
+        "at_proxy_url": at_url,
+        "uptime_seconds": uptime,
+    }))
+}
+
+// ---- Static files (embedded via rust-embed) ----
+
+use rust_embed::Embed;
+
+#[derive(Embed)]
+#[folder = "frontend/"]
+pub struct FrontendAssets;
+
+pub async fn serve_frontend(uri: axum::http::Uri) -> impl IntoResponse {
+    let path = uri.path().trim_start_matches('/');
+    let path = if path.is_empty() { "index.html" } else { path };
+
+    match FrontendAssets::get(path) {
+        Some(content) => {
+            let mime = mime_guess::from_path(path).first_or_octet_stream();
+            (
+                StatusCode::OK,
+                [(axum::http::header::CONTENT_TYPE, mime.as_ref())],
+                content.data.into_owned(),
+            ).into_response()
+        }
+        None => {
+            // SPA fallback to index.html
+            match FrontendAssets::get("index.html") {
+                Some(content) => (
+                    StatusCode::OK,
+                    [(axum::http::header::CONTENT_TYPE, "text/html")],
+                    content.data.into_owned(),
+                ).into_response(),
+                None => (StatusCode::NOT_FOUND, "Not Found").into_response(),
+            }
+        }
+    }
+}
