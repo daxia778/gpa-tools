@@ -374,6 +374,197 @@ pub async fn generate_api_key(State(state): State<AppState>) -> Json<Value> {
     Json(json!({ "ok": true, "api_key": key }))
 }
 
+// ---- CLI One-Click Sync (一键导入配置) ----
+
+#[derive(Deserialize)]
+pub struct CliSyncRequest {
+    pub app: String,          // "claude" | "codex" | "gemini"
+    pub model: Option<String>,
+}
+
+/// 获取 CLI 配置状态
+pub async fn get_cli_status(State(state): State<AppState>, Query(q): Query<std::collections::HashMap<String, String>>) -> Json<Value> {
+    let app = q.get("app").map(|s| s.as_str()).unwrap_or("claude");
+    let api_key = state.db.get_config("api_key").unwrap_or_default();
+    let home = dirs::home_dir().unwrap_or_default();
+
+    match app {
+        "claude" => {
+            let config_path = home.join(".claude").join("settings.json");
+            let exists = config_path.exists();
+            let mut current_url = String::new();
+            let mut is_synced = false;
+            if exists {
+                if let Ok(content) = std::fs::read_to_string(&config_path) {
+                    if let Ok(v) = serde_json::from_str::<Value>(&content) {
+                        current_url = v.get("env").and_then(|e| e.get("ANTHROPIC_BASE_URL")).and_then(|v| v.as_str()).unwrap_or("").into();
+                        is_synced = current_url.contains("localhost:8600");
+                    }
+                }
+            }
+            Json(json!({
+                "app": "claude", "config_path": config_path.to_string_lossy(),
+                "exists": exists, "is_synced": is_synced,
+                "current_base_url": current_url,
+            }))
+        }
+        "codex" => {
+            let config_path = home.join(".codex").join("config.toml");
+            let exists = config_path.exists();
+            let mut current_url = String::new();
+            let mut is_synced = false;
+            if exists {
+                if let Ok(content) = std::fs::read_to_string(&config_path) {
+                    is_synced = content.contains("localhost:8600");
+                    // Extract base_url
+                    for line in content.lines() {
+                        if line.contains("base_url") {
+                            current_url = line.split('=').nth(1).unwrap_or("").trim().trim_matches('"').into();
+                        }
+                    }
+                }
+            }
+            Json(json!({
+                "app": "codex", "config_path": config_path.to_string_lossy(),
+                "exists": exists, "is_synced": is_synced,
+                "current_base_url": current_url,
+            }))
+        }
+        "gemini" => {
+            let config_path = home.join(".gemini").join("settings.json");
+            let exists = config_path.exists();
+            Json(json!({
+                "app": "gemini", "config_path": config_path.to_string_lossy(),
+                "exists": exists, "is_synced": false,
+                "current_base_url": "",
+                "note": "Gemini CLI 需设置 GEMINI_API_KEY 环境变量",
+            }))
+        }
+        _ => Json(json!({"error": "Unknown app"})),
+    }
+}
+
+/// 一键写入 CLI 配置
+pub async fn execute_cli_sync(State(state): State<AppState>, Json(req): Json<CliSyncRequest>) -> impl IntoResponse {
+    let api_key = state.db.get_config("api_key").unwrap_or_default();
+    if api_key.is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(json!({"ok": false, "error": "请先生成 API Key"}))).into_response();
+    }
+    let home = dirs::home_dir().unwrap_or_default();
+    let proxy_url = "http://localhost:8600";
+
+    match req.app.as_str() {
+        "claude" => {
+            let config_path = home.join(".claude").join("settings.json");
+            // Read existing config or create new one
+            let mut config: Value = if config_path.exists() {
+                let content = std::fs::read_to_string(&config_path).unwrap_or("{}".into());
+                serde_json::from_str(&content).unwrap_or(json!({}))
+            } else {
+                std::fs::create_dir_all(home.join(".claude")).ok();
+                json!({})
+            };
+
+            // Backup original
+            if config_path.exists() {
+                let backup = home.join(".claude").join("settings.json.gpa-backup");
+                std::fs::copy(&config_path, &backup).ok();
+            }
+
+            // Merge env settings (preserve other fields like mcpServers)
+            let env = config.as_object_mut().unwrap()
+                .entry("env").or_insert(json!({}));
+            env["ANTHROPIC_API_KEY"] = json!(api_key);
+            env["ANTHROPIC_BASE_URL"] = json!(proxy_url);
+
+            // Set model if provided
+            if let Some(model) = &req.model {
+                config["model"] = json!(model);
+            }
+
+            let pretty = serde_json::to_string_pretty(&config).unwrap();
+            match std::fs::write(&config_path, &pretty) {
+                Ok(_) => Json(json!({"ok": true, "app": "claude", "path": config_path.to_string_lossy()})).into_response(),
+                Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"ok": false, "error": e.to_string()}))).into_response(),
+            }
+        }
+        "codex" => {
+            let config_path = home.join(".codex").join("config.toml");
+            // Backup original
+            if config_path.exists() {
+                let backup = home.join(".codex").join("config.toml.gpa-backup");
+                std::fs::copy(&config_path, &backup).ok();
+            } else {
+                std::fs::create_dir_all(home.join(".codex")).ok();
+            }
+
+            let model = req.model.as_deref().unwrap_or("gpt-4o");
+            let toml_content = format!(
+r#"model_provider = "gpatools"
+model = "{model}"
+
+[model_providers.gpatools]
+name = "GPA Tools Proxy"
+base_url = "{proxy_url}/v1"
+wire_api = "responses"
+env_key = "GPA_API_KEY"
+"#);
+            // Also set env var hint
+            match std::fs::write(&config_path, &toml_content) {
+                Ok(_) => Json(json!({"ok": true, "app": "codex", "path": config_path.to_string_lossy(), "env_hint": format!("export GPA_API_KEY={}", api_key)})).into_response(),
+                Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"ok": false, "error": e.to_string()}))).into_response(),
+            }
+        }
+        _ => (StatusCode::BAD_REQUEST, Json(json!({"ok": false, "error": "不支持的 CLI 类型"}))).into_response(),
+    }
+}
+
+/// 恢复 CLI 原始配置 (从备份)
+pub async fn restore_cli_config(Json(req): Json<CliSyncRequest>) -> impl IntoResponse {
+    let home = dirs::home_dir().unwrap_or_default();
+    let (config_path, backup_path) = match req.app.as_str() {
+        "claude" => (home.join(".claude/settings.json"), home.join(".claude/settings.json.gpa-backup")),
+        "codex" => (home.join(".codex/config.toml"), home.join(".codex/config.toml.gpa-backup")),
+        _ => return (StatusCode::BAD_REQUEST, Json(json!({"ok": false, "error": "不支持的 CLI 类型"}))).into_response(),
+    };
+
+    if backup_path.exists() {
+        match std::fs::copy(&backup_path, &config_path) {
+            Ok(_) => {
+                std::fs::remove_file(&backup_path).ok();
+                Json(json!({"ok": true, "restored": true})).into_response()
+            }
+            Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"ok": false, "error": e.to_string()}))).into_response(),
+        }
+    } else {
+        Json(json!({"ok": true, "restored": false, "message": "无备份文件"})).into_response()
+    }
+}
+
+/// 读取 CLI 配置文件内容
+pub async fn view_cli_config(Query(q): Query<std::collections::HashMap<String, String>>) -> Json<Value> {
+    let app = q.get("app").map(|s| s.as_str()).unwrap_or("claude");
+    let home = dirs::home_dir().unwrap_or_default();
+    let config_path = match app {
+        "claude" => home.join(".claude/settings.json"),
+        "codex" => home.join(".codex/config.toml"),
+        "gemini" => home.join(".gemini/settings.json"),
+        _ => return Json(json!({"error": "Unknown app"})),
+    };
+
+    let content = std::fs::read_to_string(&config_path).unwrap_or_else(|_| "文件不存在".into());
+    let has_backup = match app {
+        "claude" => home.join(".claude/settings.json.gpa-backup").exists(),
+        "codex" => home.join(".codex/config.toml.gpa-backup").exists(),
+        _ => false,
+    };
+
+    Json(json!({
+        "app": app, "path": config_path.to_string_lossy(),
+        "content": content, "has_backup": has_backup,
+    }))
+}
+
 // ---- Sync from AT Manager ----
 
 pub async fn sync_accounts(State(state): State<AppState>) -> impl IntoResponse {

@@ -316,30 +316,147 @@ async function loadApiKey() {
 
 function renderCliCards() {
   const clis = [
-    { name: 'Claude Code', icon: '⌘', color: '#a855f7', protocol: 'anthropic',
-      envLines: [`export ANTHROPIC_BASE_URL=http://localhost:8600`, `export ANTHROPIC_API_KEY=${apiKey || 'gpa-xxx'}`] },
-    { name: 'Codex CLI', icon: '▶', color: '#3b82f6', protocol: 'openai',
-      envLines: [`export OPENAI_BASE_URL=http://localhost:8600/v1`, `export OPENAI_API_KEY=${apiKey || 'gpa-xxx'}`] },
-    { name: 'Gemini CLI', icon: '◆', color: '#22c55e', protocol: 'gemini',
-      envLines: [`export GEMINI_API_KEY=${apiKey || 'gpa-xxx'}`, `# Gemini CLI 通过 API Key 模式连接`] },
-    { name: 'Cursor / Windsurf', icon: '✦', color: '#f59e0b', protocol: 'openai',
-      envLines: [`# Base URL: http://localhost:8600/v1`, `# API Key: ${apiKey || 'gpa-xxx'}`, `# 在 IDE Settings → AI 配置中填写以上信息`] },
+    { id: 'claude', name: 'Claude Code', icon: '⌘', color: '#a855f7', protocol: 'ANTHROPIC' },
+    { id: 'codex', name: 'Codex CLI', icon: '▶', color: '#3b82f6', protocol: 'OPENAI' },
+    { id: 'gemini', name: 'Gemini CLI', icon: '◆', color: '#22c55e', protocol: 'GEMINI' },
+    { id: 'cursor', name: 'Cursor / Windsurf', icon: '✦', color: '#f59e0b', protocol: 'OPENAI' },
   ];
 
   document.getElementById('cli-cards').innerHTML = clis.map(cli => {
-    const cmdText = cli.envLines.join('\n');
-    return `<div class="cli-card">
+    return `<div class="cli-card" id="cli-card-${cli.id}">
       <div class="cli-card-header">
         <div class="cli-icon" style="background:${cli.color}">${cli.icon}</div>
         <div class="cli-name">${cli.name}</div>
         <span class="cli-protocol">${cli.protocol}</span>
       </div>
-      <pre class="cli-code">${escapeHtml(cmdText)}</pre>
-      <button class="btn btn-sm btn-outline cli-copy-btn" onclick="copyText(\`${cmdText.replace(/`/g, '\\`')}\`)">
-        复制命令
-      </button>
+      <div class="cli-sync-status" id="cli-status-${cli.id}">
+        <span class="cli-status-loading">检测中...</span>
+      </div>
+      <div class="cli-actions" id="cli-actions-${cli.id}"></div>
     </div>`;
   }).join('');
+
+  // Load status for each CLI
+  ['claude', 'codex'].forEach(loadCliStatus);
+  // Gemini and Cursor are env-based, render manual instructions
+  renderEnvOnlyCard('gemini');
+  renderEnvOnlyCard('cursor');
+}
+
+async function loadCliStatus(appId) {
+  const statusEl = document.getElementById(`cli-status-${appId}`);
+  const actionsEl = document.getElementById(`cli-actions-${appId}`);
+  try {
+    const data = await fetch(`${API}/api/cli/status?app=${appId}`).then(r => r.json());
+    const viewData = await fetch(`${API}/api/cli/view?app=${appId}`).then(r => r.json());
+
+    let statusHtml = '';
+    let actionsHtml = '';
+
+    if (data.is_synced) {
+      statusHtml = `
+        <div class="cli-sync-badge synced">🟢 已同步到 GPA Tools</div>
+        <div class="cli-config-path">📄 ${data.config_path}</div>
+        <pre class="cli-code">${escapeHtml(viewData.content || '').substring(0, 500)}</pre>`;
+      actionsHtml = `
+        <button class="btn btn-sm btn-outline" onclick="viewCliConfig('${appId}')">查看配置</button>
+        ${viewData.has_backup ? `<button class="btn btn-sm btn-outline btn-danger" onclick="restoreCli('${appId}')">恢复原始</button>` : ''}`;
+    } else if (data.exists) {
+      statusHtml = `
+        <div class="cli-sync-badge not-synced">🔶 未同步 — 当前指向: <code>${data.current_base_url || '默认'}</code></div>
+        <div class="cli-config-path">📄 ${data.config_path}</div>`;
+      actionsHtml = `
+        <button class="btn btn-sm btn-primary" onclick="syncCli('${appId}')">⚡ 一键同步</button>
+        <button class="btn btn-sm btn-outline" onclick="viewCliConfig('${appId}')">查看当前</button>`;
+    } else {
+      statusHtml = `
+        <div class="cli-sync-badge no-config">⚪ 未安装 / 无配置文件</div>`;
+      actionsHtml = `
+        <button class="btn btn-sm btn-primary" onclick="syncCli('${appId}')">⚡ 创建配置</button>`;
+    }
+
+    statusEl.innerHTML = statusHtml;
+    actionsEl.innerHTML = actionsHtml;
+  } catch (e) {
+    statusEl.innerHTML = `<div class="cli-sync-badge error">❌ 状态检测失败</div>`;
+  }
+}
+
+function renderEnvOnlyCard(appId) {
+  const statusEl = document.getElementById(`cli-status-${appId}`);
+  const actionsEl = document.getElementById(`cli-actions-${appId}`);
+  const key = apiKey || 'gpa-xxx';
+
+  if (appId === 'gemini') {
+    statusEl.innerHTML = `
+      <div class="cli-sync-badge info">ℹ️ 需设置环境变量</div>
+      <pre class="cli-code">export GEMINI_API_KEY=${key}</pre>`;
+    actionsEl.innerHTML = `<button class="btn btn-sm btn-outline" onclick="copyText('export GEMINI_API_KEY=${key}')">复制命令</button>`;
+  } else {
+    statusEl.innerHTML = `
+      <div class="cli-sync-badge info">ℹ️ 在 IDE 设置中手动配置</div>
+      <pre class="cli-code"># Base URL: http://localhost:8600/v1\n# API Key: ${key}\n# 在 IDE Settings → AI 配置中填写</pre>`;
+    actionsEl.innerHTML = `<button class="btn btn-sm btn-outline" onclick="copyText('http://localhost:8600/v1')">复制 URL</button>
+      <button class="btn btn-sm btn-outline" onclick="copyText('${key}')">复制 Key</button>`;
+  }
+}
+
+async function syncCli(appId) {
+  if (!apiKey) {
+    alert('请先在上方生成 API Key');
+    return;
+  }
+  const statusEl = document.getElementById(`cli-status-${appId}`);
+  statusEl.innerHTML = '<div class="cli-sync-badge syncing">⏳ 正在写入配置...</div>';
+
+  try {
+    const res = await fetch(`${API}/api/cli/sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ app: appId }),
+    }).then(r => r.json());
+
+    if (res.ok) {
+      showToast(`✅ ${appId} 配置已同步`);
+      if (res.env_hint) {
+        showToast(`📋 还需设置: ${res.env_hint}`, 'info', 5000);
+      }
+      loadCliStatus(appId);
+    } else {
+      showToast(`❌ 同步失败: ${res.error}`, 'error');
+      loadCliStatus(appId);
+    }
+  } catch (e) {
+    showToast(`❌ 同步失败: ${e.message}`, 'error');
+    loadCliStatus(appId);
+  }
+}
+
+async function restoreCli(appId) {
+  if (!confirm(`确定要恢复 ${appId} 的原始配置？`)) return;
+  try {
+    const res = await fetch(`${API}/api/cli/restore`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ app: appId }),
+    }).then(r => r.json());
+
+    if (res.restored) {
+      showToast(`✅ ${appId} 配置已恢复`);
+    } else {
+      showToast(`ℹ️ ${res.message || '无备份可恢复'}`, 'info');
+    }
+    loadCliStatus(appId);
+  } catch (e) {
+    showToast(`❌ 恢复失败: ${e.message}`, 'error');
+  }
+}
+
+async function viewCliConfig(appId) {
+  try {
+    const data = await fetch(`${API}/api/cli/view?app=${appId}`).then(r => r.json());
+    alert(`📄 ${data.path}\n${'─'.repeat(40)}\n${data.content}`);
+  } catch (e) { alert('读取失败'); }
 }
 
 // ---- Traffic Monitor ----

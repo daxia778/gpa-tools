@@ -75,6 +75,11 @@ fn main() {
         // API Key
         .route("/api/api-key", get(api::get_api_key))
         .route("/api/api-key/generate", post(api::generate_api_key))
+        // CLI Sync (一键导入配置)
+        .route("/api/cli/status", get(api::get_cli_status))
+        .route("/api/cli/sync", post(api::execute_cli_sync))
+        .route("/api/cli/restore", post(api::restore_cli_config))
+        .route("/api/cli/view", get(api::view_cli_config))
         // Sync & Config
         .route("/api/sync-accounts", post(api::sync_accounts))
         .route("/api/config", get(api::get_config).post(api::save_config))
