@@ -27,6 +27,8 @@ function switchPage(page) {
   });
   if (page === 'dashboard') loadDashboard();
   if (page === 'accounts') loadAccounts();
+  if (page === 'proxy') loadProxyPage();
+  if (page === 'logs') loadLogsPage();
   if (page === 'toolbox') loadToolbox();
 }
 
@@ -701,6 +703,244 @@ function formatNumber(n) {
   if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
   if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
   return n.toString();
+}
+
+// ============================================================
+// PAGE: API 反代
+// ============================================================
+
+async function loadProxyPage() {
+  // Load API key for proxy page
+  try {
+    const data = await fetch(`${API}/api/api-key`).then(r => r.json());
+    apiKey = data.api_key || '';
+    const el = document.getElementById('proxy-api-key');
+    if (el) el.textContent = apiKey || '未生成 — 点击「生成」创建';
+  } catch (e) {}
+
+  // Update service badge
+  try {
+    const h = await fetch(`${API}/api/health`).then(r => r.json());
+    const badge = document.getElementById('proxy-svc-badge');
+    if (badge && h.bridge === 'online') {
+      badge.innerHTML = '<span class="dot online"></span> 服务运行中 (port ' + h.port + ')';
+      badge.className = 'proxy-service-badge running';
+    }
+  } catch (e) {}
+
+  // Render CLI cards in proxy page
+  renderProxyCliCards();
+}
+
+function renderProxyCliCards() {
+  const container = document.getElementById('proxy-cli-cards');
+  if (!container) return;
+  // Reuse the toolbox cli rendering but target proxy-cli-cards
+  const origContainer = document.getElementById('cli-cards');
+  // Build cards inline
+  const clis = [
+    { id: 'claude', name: 'Claude Code', icon: '⌘', color: '#a855f7', protocol: 'ANTHROPIC' },
+    { id: 'codex', name: 'Codex CLI', icon: '▶', color: '#3b82f6', protocol: 'OPENAI' },
+    { id: 'gemini', name: 'Gemini CLI', icon: '◆', color: '#22c55e', protocol: 'GEMINI' },
+    { id: 'cursor', name: 'Cursor / Windsurf', icon: '✦', color: '#f59e0b', protocol: 'OPENAI' },
+  ];
+  container.innerHTML = clis.map(cli => `<div class="cli-card" id="pcli-card-${cli.id}">
+    <div class="cli-card-header">
+      <div class="cli-icon" style="background:${cli.color}">${cli.icon}</div>
+      <div class="cli-name">${cli.name}</div>
+      <span class="cli-protocol">${cli.protocol}</span>
+    </div>
+    <div class="cli-sync-status" id="pcli-status-${cli.id}"><span class="cli-status-loading">检测中...</span></div>
+    <div class="cli-actions" id="pcli-actions-${cli.id}"></div>
+  </div>`).join('');
+
+  // Load status
+  ['claude', 'codex'].forEach(async (appId) => {
+    const statusEl = document.getElementById(`pcli-status-${appId}`);
+    const actionsEl = document.getElementById(`pcli-actions-${appId}`);
+    try {
+      const data = await fetch(`${API}/api/cli/status?app=${appId}`).then(r => r.json());
+      if (data.is_synced) {
+        statusEl.innerHTML = '<div class="cli-sync-badge synced">🟢 已同步到 GPA Tools</div>';
+        actionsEl.innerHTML = '<button class="btn btn-sm btn-outline" onclick="viewCliConfig(\'' + appId + '\')">查看</button>';
+      } else if (data.exists) {
+        statusEl.innerHTML = `<div class="cli-sync-badge not-synced">🟡 未同步 — 当前: <code>${data.current_base_url || '默认'}</code></div>`;
+        actionsEl.innerHTML = '<button class="btn btn-sm btn-primary" onclick="syncCli(\'' + appId + '\')">⚡ 一键同步</button>';
+      } else {
+        statusEl.innerHTML = '<div class="cli-sync-badge no-config">⚪ 未安装</div>';
+        actionsEl.innerHTML = '<button class="btn btn-sm btn-primary" onclick="syncCli(\'' + appId + '\')">⚡ 创建配置</button>';
+      }
+    } catch (e) { statusEl.innerHTML = '<div class="cli-sync-badge error">❌ 检测失败</div>'; }
+  });
+
+  // Env-only cards
+  const key = apiKey || 'gpa-xxx';
+  const gemSt = document.getElementById('pcli-status-gemini');
+  const gemAc = document.getElementById('pcli-actions-gemini');
+  if (gemSt) { gemSt.innerHTML = '<div class="cli-sync-badge info">ℹ️ 需设置环境变量</div><pre class="cli-code">export GEMINI_API_KEY=' + key + '</pre>'; }
+  if (gemAc) { gemAc.innerHTML = '<button class="btn btn-sm btn-outline" onclick="copyText(\'export GEMINI_API_KEY=' + key + '\')">复制</button>'; }
+  const curSt = document.getElementById('pcli-status-cursor');
+  const curAc = document.getElementById('pcli-actions-cursor');
+  if (curSt) { curSt.innerHTML = '<div class="cli-sync-badge info">ℹ️ IDE 手动配置</div>'; }
+  if (curAc) { curAc.innerHTML = '<button class="btn btn-sm btn-outline" onclick="copyText(\'http://localhost:8600/v1\')">复制 URL</button> <button class="btn btn-sm btn-outline" onclick="copyText(\'' + key + '\')">复制 Key</button>'; }
+}
+
+function copyProxyApiKey() { copyText(apiKey); }
+async function generateProxyApiKey() {
+  try {
+    const data = await fetch(`${API}/api/api-key/generate`, { method: 'POST' }).then(r => r.json());
+    if (data.ok) {
+      apiKey = data.api_key;
+      document.getElementById('proxy-api-key').textContent = apiKey;
+      document.getElementById('api-key-display').textContent = apiKey;
+      showToast('✅ API Key 已生成');
+    }
+  } catch (e) { showToast('❌ 生成失败', 'error'); }
+}
+function toggleProxyService() {
+  showToast('ℹ️ GPA Tools 服务始终运行，无需手动启停', 'info');
+}
+
+// ============================================================
+// PAGE: 流量日志 (AT Manager 风格)
+// ============================================================
+
+let logsState = {
+  page: 1,
+  perPage: 100,
+  total: 0,
+  filter: 'all',
+  search: '',
+  account: '',
+  data: [],
+};
+let logsAutoRefresh = null;
+
+async function loadLogsPage() {
+  // Bind filter pills
+  document.querySelectorAll('.logs-filter-pill').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.logs-filter-pill').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      logsState.filter = btn.dataset.filter;
+      logsState.page = 1;
+      fetchLogs();
+    };
+  });
+  // Search debounce
+  const searchEl = document.getElementById('logs-search');
+  let searchTimer = null;
+  searchEl.oninput = () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { logsState.search = searchEl.value; logsState.page = 1; fetchLogs(); }, 400);
+  };
+  // Account filter
+  const acctFilter = document.getElementById('logs-account-filter');
+  acctFilter.onchange = () => { logsState.account = acctFilter.value; logsState.page = 1; fetchLogs(); };
+  // Per-page
+  document.getElementById('logs-per-page').onchange = function() { logsState.perPage = parseInt(this.value); logsState.page = 1; fetchLogs(); };
+  // Populate account dropdown
+  try {
+    const accts = await fetch(`${API}/api/accounts`).then(r => r.json());
+    acctFilter.innerHTML = '<option value="">全部账号</option>' +
+      accts.map(a => `<option value="${a.email}">${a.email.split('@')[0]}</option>`).join('');
+  } catch (e) {}
+
+  fetchLogs();
+  // Auto-refresh every 10s
+  if (logsAutoRefresh) clearInterval(logsAutoRefresh);
+  logsAutoRefresh = setInterval(() => { if (currentPage === 'logs') fetchLogs(); }, 10000);
+}
+
+async function fetchLogs() {
+  try {
+    const params = new URLSearchParams({
+      offset: (logsState.page - 1) * logsState.perPage,
+      limit: logsState.perPage,
+    });
+    if (logsState.filter === 'errors') params.set('errors_only', 'true');
+    if (logsState.search) params.set('search', logsState.search);
+    if (logsState.account) params.set('account', logsState.account);
+    if (['gemini', 'claude', 'chat', 'credits'].includes(logsState.filter)) params.set('search', logsState.filter);
+
+    const data = await fetch(`${API}/api/usage-logs?${params}`).then(r => r.json());
+    logsState.data = data.logs || [];
+    logsState.total = data.total || 0;
+    renderLogsTable();
+    renderLogsStats();
+    renderLogsPagination();
+  } catch (e) { console.error('Logs fetch error:', e); }
+}
+
+function renderLogsTable() {
+  const tbody = document.getElementById('logs-body');
+  if (!logsState.data.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="empty-state">暂无请求记录</td></tr>';
+    return;
+  }
+  tbody.innerHTML = logsState.data.map(log => {
+    const status = log.status_code || log.status || 0;
+    const isErr = status >= 400;
+    const statusClass = isErr ? 'log-status-err' : 'log-status-ok';
+    const method = log.method || 'GET';
+    const model = log.model || '—';
+    const protocol = (log.path || '').startsWith('/v1') ? 'OpenAI' :
+                     (log.path || '').startsWith('/anthropic') ? 'Anthropic' :
+                     (log.path || '').startsWith('/gemini') ? 'Gemini' : '—';
+    const account = log.account_email || log.account || '—';
+    const path = log.path || '—';
+    const tokens = (log.input_tokens || 0) + (log.output_tokens || 0);
+    const tokensStr = tokens > 0 ? formatNumber(tokens) : '—';
+    const latency = log.latency_ms != null ? log.latency_ms + 'ms' : (log.duration ? log.duration + 'ms' : '—');
+    const time = log.created_at ? new Date(log.created_at).toLocaleTimeString('zh-CN', {hour12: false}) : '—';
+
+    return `<tr class="${isErr ? 'log-row-err' : ''}">
+      <td><span class="${statusClass}">${status}</span></td>
+      <td>${method}</td>
+      <td class="log-model-cell" title="${model}">${model}</td>
+      <td>${protocol}</td>
+      <td class="log-account-cell" title="${account}">${account === '—' ? '—' : account.split('@')[0]}</td>
+      <td class="log-path-cell" title="${path}">${path}</td>
+      <td style="text-align:right">${tokensStr}</td>
+      <td style="text-align:right">${latency}</td>
+      <td style="text-align:right">${time}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderLogsStats() {
+  const el = document.getElementById('logs-stats');
+  const total = logsState.total;
+  const errCount = logsState.data.filter(l => (l.status_code || l.status || 0) >= 400).length;
+  const okCount = logsState.data.length - errCount;
+  el.innerHTML = `
+    <span class="logs-stat-item"><strong>${formatNumber(total)}</strong> 总计</span>
+    <span class="logs-stat-item logs-stat-ok"><strong>${formatNumber(okCount)}</strong> 正常</span>
+    <span class="logs-stat-item logs-stat-err"><strong>${errCount}</strong> 错误</span>`;
+}
+
+function renderLogsPagination() {
+  const totalPages = Math.ceil(logsState.total / logsState.perPage) || 1;
+  document.getElementById('logs-page-info').textContent =
+    `${logsState.page} / ${totalPages} 页，共 ${logsState.total} 条`;
+  document.getElementById('logs-prev').disabled = logsState.page <= 1;
+  document.getElementById('logs-next').disabled = logsState.page >= totalPages;
+}
+
+function logsPagePrev() { if (logsState.page > 1) { logsState.page--; fetchLogs(); } }
+function logsPageNext() {
+  const totalPages = Math.ceil(logsState.total / logsState.perPage) || 1;
+  if (logsState.page < totalPages) { logsState.page++; fetchLogs(); }
+}
+
+function refreshTrafficLogs() { fetchLogs(); showToast('✅ 日志已刷新'); }
+async function clearTrafficLogs() {
+  if (!confirm('确定清空所有流量日志？')) return;
+  try {
+    await fetch(`${API}/api/usage-logs/clear`, { method: 'POST' });
+    showToast('✅ 日志已清空');
+    fetchLogs();
+  } catch (e) { showToast('❌ 清空失败', 'error'); }
 }
 
 // ---- Init ----

@@ -931,3 +931,128 @@ a { text-decoration: none; }
   .cli-cards-grid { grid-template-columns: 1fr; }
   .acct-quota-grid { grid-template-columns: 1fr; }
 }
+
+/* ============================================
+   V3: API Proxy Page
+   ============================================ */
+.proxy-service-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600;
+  background: #fef2f2; color: #dc2626; border: 1px solid #fecaca;
+}
+.proxy-service-badge.running {
+  background: #f0fdf4; color: #16a34a; border-color: #bbf7d0;
+}
+.proxy-service-badge .dot {
+  width: 8px; height: 8px; border-radius: 50%; display: inline-block;
+}
+.proxy-service-badge .dot.online { background: #22c55e; }
+.proxy-service-badge .dot.offline { background: #ef4444; }
+
+.proxy-config-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px;
+}
+.proxy-config-row {
+  display: flex; gap: 24px; flex-wrap: wrap;
+}
+.config-field { display: flex; flex-direction: column; gap: 4px; }
+.config-field-inline { display: flex; align-items: center; gap: 8px; }
+.config-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.config-hint { font-size: 11px; color: var(--text-muted); }
+
+/* Toggle Switch */
+.toggle-switch {
+  position: relative; display: inline-block; width: 40px; height: 22px; flex-shrink: 0;
+}
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+  background: #cbd5e1; border-radius: 22px; transition: 0.3s;
+}
+.toggle-slider::before {
+  content: ''; position: absolute; height: 16px; width: 16px; left: 3px; bottom: 3px;
+  background: white; border-radius: 50%; transition: 0.3s;
+}
+.toggle-switch input:checked + .toggle-slider { background: #3b82f6; }
+.toggle-switch input:checked + .toggle-slider::before { transform: translateX(18px); }
+
+/* ============================================
+   V3: Traffic Logs Page (AT Manager 风格)
+   ============================================ */
+.logs-header-actions {
+  display: flex; align-items: center; gap: 10px;
+}
+.logs-stats {
+  display: flex; gap: 12px; font-size: 13px;
+}
+.logs-stat-item { display: flex; align-items: center; gap: 4px; color: var(--text-secondary); }
+.logs-stat-item strong { font-weight: 700; }
+.logs-stat-ok strong { color: #16a34a; }
+.logs-stat-err strong { color: #ef4444; }
+
+.logs-filter-bar {
+  display: flex; gap: 12px; align-items: center; margin-bottom: 8px;
+}
+.logs-search-wrap { flex: 1; }
+.logs-search-wrap .input {
+  width: 100%; padding: 8px 14px; font-size: 13px;
+  background: white; border: 1px solid var(--border-color); border-radius: 8px;
+}
+
+.logs-quick-filters {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 12px;
+}
+.logs-filter-label { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.logs-filter-pill {
+  padding: 4px 12px; border-radius: 16px; border: 1px solid var(--border-color);
+  background: white; font-size: 12px; cursor: pointer; transition: all 0.2s;
+  color: var(--text-secondary);
+}
+.logs-filter-pill:hover { border-color: #93c5fd; color: #3b82f6; }
+.logs-filter-pill.active {
+  background: #3b82f6; color: white; border-color: #3b82f6;
+}
+
+.logs-table-wrap {
+  overflow-x: auto; max-height: 65vh; overflow-y: auto;
+  border: 1px solid var(--border-color); border-radius: 8px;
+}
+.logs-table {
+  width: 100%; border-collapse: collapse; font-size: 12px;
+}
+.logs-table thead { position: sticky; top: 0; z-index: 5; }
+.logs-table th {
+  background: #f8fafc; padding: 10px 12px; text-align: left;
+  font-weight: 700; color: var(--text-secondary); font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.3px;
+  border-bottom: 2px solid var(--border-color);
+}
+.logs-table td {
+  padding: 8px 12px; border-bottom: 1px solid #f1f5f9;
+  color: var(--text-primary); white-space: nowrap;
+}
+.logs-table tr:hover td { background: #f8fafc; }
+.log-row-err td { background: #fef2f2 !important; }
+.log-row-err:hover td { background: #fee2e2 !important; }
+
+.log-status-ok {
+  display: inline-block; padding: 2px 8px; border-radius: 4px;
+  background: #f0fdf4; color: #16a34a; font-weight: 700; font-size: 12px;
+}
+.log-status-err {
+  display: inline-block; padding: 2px 8px; border-radius: 4px;
+  background: #fef2f2; color: #ef4444; font-weight: 700; font-size: 12px;
+}
+.log-model-cell, .log-path-cell {
+  max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.log-account-cell {
+  max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: #3b82f6;
+}
+
+.logs-pagination {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  font-size: 12px; color: var(--text-secondary); border-top: 1px solid var(--border-color);
+}
+.logs-pagination .btn { min-width: 28px; }
