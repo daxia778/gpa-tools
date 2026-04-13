@@ -125,143 +125,148 @@
       </section>
     </div>
 
-    <!-- ==================== PAGE: API PROXY ==================== -->
+    <!-- ==================== PAGE: API PROXY (AT Manager 1:1) ==================== -->
     <div id="page-proxy" class="page-container hidden">
-      <div class="page-title-row">
-        <h1 class="page-title">
-          <svg class="icon-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:24px;height:24px;vertical-align:-4px;margin-right:6px;"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2"/></svg>
-          API 反代
-        </h1>
-        <div class="proxy-service-badge" id="proxy-svc-badge">
-          <span class="dot offline"></span> 服务已停止
-        </div>
-      </div>
 
-      <!-- Service Config -->
-      <section class="section card" id="section-proxy-config">
-        <div class="section-title-row">
-          <h2 class="section-title">
-            <svg class="icon-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/></svg>
-            服务配置
-          </h2>
-          <button id="btn-toggle-proxy" class="btn btn-primary btn-sm" onclick="toggleProxyService()">
+      <!-- 主配置卡片 (AT同款: 单卡片, header bar + 内容区) -->
+      <div class="at-card">
+        <!-- Header Bar -->
+        <div class="at-card-header">
+          <div class="at-card-title-group">
+            <h2 class="at-card-title">
+              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/></svg>
+              服务配置
+            </h2>
+            <div class="at-status-indicator" id="proxy-svc-badge">
+              <span class="at-status-dot offline"></span>
+              <span class="at-status-text">服务已停止</span>
+            </div>
+          </div>
+          <button class="at-btn-start" id="btn-toggle-proxy" onclick="toggleProxyService()">
             <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
             启动服务
           </button>
         </div>
-        <div class="proxy-config-grid">
-          <div class="config-field">
-            <label class="config-label">监听端口</label>
-            <input type="number" id="proxy-port" class="input" value="8600" disabled>
-            <span class="config-hint">固定 8600，修改需重启程序</span>
-          </div>
-          <div class="config-field">
-            <label class="config-label">请求超时</label>
-            <div style="display:flex;align-items:center;gap:6px;">
-              <input type="number" id="proxy-timeout" class="input" value="120" min="30" max="7200">
-              <span class="config-hint">秒</span>
+        <div class="at-card-body">
+          <!-- 端口 + 超时 + 自启 -->
+          <div class="at-config-row-3">
+            <div class="at-field">
+              <label class="at-label">监听端口 <span class="at-tip">ⓘ</span></label>
+              <input type="number" class="at-input" value="8600" disabled>
+              <span class="at-hint">默认 8045，修改端口需重启服务</span>
+            </div>
+            <div class="at-field">
+              <label class="at-label">请求超时 <span class="at-tip">ⓘ</span></label>
+              <input type="number" class="at-input" value="120" min="30" max="7200">
+              <span class="at-hint">默认 120 秒，范围 30-7200 秒。修改后需重启服务生效。</span>
+            </div>
+            <div class="at-field at-field-toggle">
+              <label class="at-toggle-row">
+                <label class="toggle-switch"><input type="checkbox"><span class="toggle-slider"></span></label>
+                <span>跟随应用自动启动 <span class="at-tip">ⓘ</span></span>
+              </label>
             </div>
           </div>
-        </div>
-
-        <div class="proxy-config-row" style="margin-top:16px;">
-          <div class="config-field-inline">
-            <label class="config-label">允许局域网访问</label>
-            <label class="toggle-switch">
-              <input type="checkbox" id="proxy-lan" checked>
-              <span class="toggle-slider"></span>
-            </label>
-            <span class="config-hint" style="margin-left:8px;">监听 0.0.0.0</span>
+          <div class="at-divider"></div>
+          <!-- 局域网 + 授权 -->
+          <div class="at-config-row-2">
+            <div class="at-field">
+              <div class="at-field-row">
+                <span class="at-label">允许局域网访问 <span class="at-tip">ⓘ</span></span>
+                <label class="toggle-switch"><input type="checkbox" id="proxy-lan" checked><span class="toggle-slider"></span></label>
+              </div>
+              <p class="at-hint" style="color:#16a34a;">🟢 监听 0.0.0.0，局域网设备可访问</p>
+              <p class="at-hint" style="color:#d97706;">⚠ 开启后局域网内其他设备可访问，请确保 API 密钥安全</p>
+            </div>
+            <div class="at-field">
+              <div class="at-field-row">
+                <span class="at-label">访问授权 <span class="at-tip">ⓘ</span></span>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <span class="at-hint">已启用 <span class="at-tip">ⓘ</span></span>
+                  <label class="toggle-switch"><input type="checkbox" id="proxy-auth" checked><span class="toggle-slider"></span></label>
+                </div>
+              </div>
+              <label class="at-label" style="margin-top:8px;">模式 <span class="at-tip">ⓘ</span></label>
+              <select class="at-input" style="margin-top:4px;">
+                <option selected>自动（推荐）</option>
+                <option>严格</option>
+                <option>除健康检查外</option>
+              </select>
+              <span class="at-hint">开启后客户端需通过 Authorization: Bearer ... 传入 API Key（如选择"除健康检查外"则 /healthz 免鉴权）。</span>
+            </div>
           </div>
-          <div class="config-field-inline">
-            <label class="config-label">访问授权</label>
-            <label class="toggle-switch">
-              <input type="checkbox" id="proxy-auth" checked>
-              <span class="toggle-slider"></span>
-            </label>
-            <span class="config-hint" style="margin-left:8px;">需 Bearer Token</span>
+          <div class="at-divider"></div>
+          <!-- API 密钥 -->
+          <div class="at-field">
+            <label class="at-label">API 密钥 <span class="at-tip">ⓘ</span></label>
+            <div class="at-key-row">
+              <input type="text" class="at-input at-key-input" id="proxy-api-key-input" readonly value="—">
+              <button class="at-icon-btn" onclick="document.getElementById('proxy-api-key-input').readOnly=false;document.getElementById('proxy-api-key-input').focus();" title="编辑">✏️</button>
+              <button class="at-icon-btn" onclick="generateProxyApiKey()" title="刷新">🔄</button>
+              <button class="at-icon-btn" onclick="copyProxyApiKey()" title="复制">📋</button>
+            </div>
+            <p class="at-hint" style="color:#d97706;margin-top:4px;">注意：请妥善保管您的 API 密钥，不要泄露给他人。</p>
           </div>
-        </div>
-      </section>
-
-      <!-- API Key -->
-      <section class="section card">
-        <h2 class="section-title">
-          <svg class="icon-amber" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
-          API 密钥
-        </h2>
-        <div class="api-key-row" style="margin-top:8px;">
-          <code id="proxy-api-key" class="api-key-code">—</code>
-          <button class="btn btn-sm btn-outline" onclick="copyProxyApiKey()" title="复制">📋</button>
-          <button class="btn btn-sm btn-outline" onclick="generateProxyApiKey()" title="刷新">🔄</button>
-          <button class="btn btn-sm btn-outline" onclick="copyProxyApiKey()" title="复制">复制</button>
-          <button class="btn btn-sm btn-primary" onclick="generateProxyApiKey()">生成</button>
-        </div>
-        <p class="config-hint" style="margin-top:6px;color:#f59e0b;">⚠️ 注意：请妥善保管您的 API 密钥，不要泄露给他人。</p>
-      </section>
-
-      <!-- Endpoints -->
-      <section class="section card">
-        <h2 class="section-title">
-          <svg class="icon-green" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
-          API 端点
-        </h2>
-        <div class="proxy-status-grid" style="margin-top:12px;">
-          <div class="proxy-endpoint-card">
-            <div class="endpoint-protocol">OpenAI 协议</div>
-            <div class="endpoint-url">http://localhost:8600/v1</div>
-            <button class="btn btn-sm btn-outline" onclick="copyText('http://localhost:8600/v1')">复制</button>
+          <div class="at-divider"></div>
+          <!-- Web UI 密码 -->
+          <div class="at-field">
+            <label class="at-label">Web UI 管理后台密码 <span class="at-tip">ⓘ</span></label>
+            <div class="at-key-row">
+              <input type="text" class="at-input at-key-input" value="（同 API 密钥）" readonly style="color:#9ca3af;">
+              <button class="at-icon-btn" title="编辑">✏️</button>
+              <button class="at-icon-btn" title="复制">📋</button>
+            </div>
+            <span class="at-hint">提示：在 Docker/Web 部署场景中，您可以设置一个独立的登录密码，提高 API 密钥的安全性。</span>
           </div>
-          <div class="proxy-endpoint-card">
-            <div class="endpoint-protocol">Anthropic 协议</div>
-            <div class="endpoint-url">http://localhost:8600/anthropic</div>
-            <button class="btn btn-sm btn-outline" onclick="copyText('http://localhost:8600/anthropic')">复制</button>
-          </div>
-          <div class="proxy-endpoint-card">
-            <div class="endpoint-protocol">Gemini 协议</div>
-            <div class="endpoint-url">http://localhost:8600/gemini</div>
-            <button class="btn btn-sm btn-outline" onclick="copyText('http://localhost:8600/gemini')">复制</button>
+          <div class="at-divider"></div>
+          <!-- User-Agent 覆盖 -->
+          <div class="at-field-row">
+            <span class="at-label">User-Agent 覆盖 <span class="at-tip">ⓘ</span></span>
+            <label class="toggle-switch"><input type="checkbox"><span class="toggle-slider"></span></label>
           </div>
         </div>
-      </section>
+      </div>
 
-      <!-- CLI One-Click Sync -->
-      <section class="section" id="section-proxy-cli">
-        <h2 class="section-title" style="margin-bottom:12px;">
-          <svg class="icon-purple" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-          CLI 配置一键同步
-        </h2>
-        <div class="cli-cards-grid" id="proxy-cli-cards"></div>
-      </section>
+      <!-- CLI 配置一键同步 (AT同款: 可折叠卡片) -->
+      <div class="at-collapsible" id="proxy-cli-section">
+        <div class="at-collapsible-header" onclick="this.parentElement.classList.toggle('expanded')">
+          <div class="at-collapsible-left">
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+            <span>CLI 配置一键同步</span>
+          </div>
+          <svg class="at-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+        </div>
+        <div class="at-collapsible-body">
+          <div class="cli-cards-grid" id="proxy-cli-cards"></div>
+        </div>
+      </div>
+
     </div>
 
     <!-- ==================== PAGE: TRAFFIC LOGS ==================== -->
     <div id="page-logs" class="page-container hidden">
       <div class="page-title-row">
-        <h1 class="page-title">
-          <svg class="icon-cyan" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:24px;height:24px;vertical-align:-4px;margin-right:6px;"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-          流量日志
-        </h1>
-        <div class="logs-header-actions">
-          <div class="logs-stats" id="logs-stats">
-            <span class="logs-stat-item">— 总计</span>
-          </div>
-          <button class="btn btn-sm btn-outline" onclick="refreshTrafficLogs()" title="刷新">🔄</button>
-          <button class="btn btn-sm btn-outline btn-danger" onclick="clearTrafficLogs()" title="清空">🗑️</button>
+        <div class="logs-title-left">
+          <span class="logs-recording-badge" id="logs-rec-badge">● 正在录制</span>
         </div>
-      </div>
-
-      <!-- Search + Filters -->
-      <section class="logs-filter-bar">
-        <div class="logs-search-wrap">
-          <input type="text" id="logs-search" class="input" placeholder="搜索模型 (gemini, claude)、路径 (chat, images) 或状态码...">
+        <div class="logs-title-center">
+          <input type="text" id="logs-search" class="input logs-search-input" placeholder="搜索模型 (gemini, claude)、路径 (chat, images) 或状态码...">
         </div>
         <select id="logs-account-filter" class="input" style="width:160px;">
           <option value="">全部账号</option>
         </select>
-      </section>
+        <div class="logs-stats" id="logs-stats">
+          <span class="logs-stat-item">— 总计</span>
+        </div>
+        <button class="btn btn-sm btn-outline" onclick="refreshTrafficLogs()" title="刷新">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        </button>
+        <button class="btn btn-sm btn-outline btn-danger" onclick="clearTrafficLogs()" title="清空">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+        </button>
+      </div>
 
-      <section class="logs-quick-filters">
+      <!-- Quick Filters -->
         <span class="logs-filter-label">快速过滤：</span>
         <button class="logs-filter-pill active" data-filter="all">全部</button>
         <button class="logs-filter-pill" data-filter="errors">仅错误</button>
@@ -303,6 +308,7 @@
           <span id="logs-page-info">—</span>
           <button class="btn btn-sm btn-outline" id="logs-prev" onclick="logsPagePrev()">‹</button>
           <button class="btn btn-sm btn-outline" id="logs-next" onclick="logsPageNext()">›</button>
+          <span class="logs-pagination-detail" id="logs-page-detail"></span>
         </div>
       </section>
     </div>

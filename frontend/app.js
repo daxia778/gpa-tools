@@ -714,17 +714,17 @@ async function loadProxyPage() {
   try {
     const data = await fetch(`${API}/api/api-key`).then(r => r.json());
     apiKey = data.api_key || '';
-    const el = document.getElementById('proxy-api-key');
-    if (el) el.textContent = apiKey || '未生成 — 点击「生成」创建';
+    const el = document.getElementById('proxy-api-key-input');
+    if (el) el.value = apiKey || '未生成 — 点击 🔄 创建';
   } catch (e) {}
 
-  // Update service badge
+  // Update service badge (AT style: dot + text + separator)
   try {
     const h = await fetch(`${API}/api/health`).then(r => r.json());
     const badge = document.getElementById('proxy-svc-badge');
     if (badge && h.bridge === 'online') {
-      badge.innerHTML = '<span class="dot online"></span> 服务运行中 (port ' + h.port + ')';
-      badge.className = 'proxy-service-badge running';
+      badge.classList.add('running');
+      badge.innerHTML = '<span class="at-status-dot online"></span><span class="at-status-text">服务运行中 (' + h.port + ')</span>';
     }
   } catch (e) {}
 
@@ -791,8 +791,10 @@ async function generateProxyApiKey() {
     const data = await fetch(`${API}/api/api-key/generate`, { method: 'POST' }).then(r => r.json());
     if (data.ok) {
       apiKey = data.api_key;
-      document.getElementById('proxy-api-key').textContent = apiKey;
-      document.getElementById('api-key-display').textContent = apiKey;
+      const proxyInput = document.getElementById('proxy-api-key-input');
+      if (proxyInput) proxyInput.value = apiKey;
+      const dashDisplay = document.getElementById('api-key-display');
+      if (dashDisplay) dashDisplay.textContent = apiKey;
       showToast('✅ API Key 已生成');
     }
   } catch (e) { showToast('❌ 生成失败', 'error'); }
@@ -914,7 +916,7 @@ function renderLogsStats() {
   const errCount = logsState.data.filter(l => (l.status_code || l.status || 0) >= 400).length;
   const okCount = logsState.data.length - errCount;
   el.innerHTML = `
-    <span class="logs-stat-item"><strong>${formatNumber(total)}</strong> 总计</span>
+    <span class="logs-stat-item logs-stat-total"><strong>${formatNumber(total)}</strong> 总计</span>
     <span class="logs-stat-item logs-stat-ok"><strong>${formatNumber(okCount)}</strong> 正常</span>
     <span class="logs-stat-item logs-stat-err"><strong>${errCount}</strong> 错误</span>`;
 }
@@ -922,9 +924,14 @@ function renderLogsStats() {
 function renderLogsPagination() {
   const totalPages = Math.ceil(logsState.total / logsState.perPage) || 1;
   document.getElementById('logs-page-info').textContent =
-    `${logsState.page} / ${totalPages} 页，共 ${logsState.total} 条`;
+    `${logsState.page} / ${totalPages}`;
   document.getElementById('logs-prev').disabled = logsState.page <= 1;
   document.getElementById('logs-next').disabled = logsState.page >= totalPages;
+  // AT style: 显示第 1 到 100 条，共 2128 条
+  const start = (logsState.page - 1) * logsState.perPage + 1;
+  const end = Math.min(logsState.page * logsState.perPage, logsState.total);
+  const detail = document.getElementById('logs-page-detail');
+  if (detail) detail.textContent = logsState.total > 0 ? `显示第 ${start} 到 ${end} 条，共 ${logsState.total} 条` : '';
 }
 
 function logsPagePrev() { if (logsState.page > 1) { logsState.page--; fetchLogs(); } }

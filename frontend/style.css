@@ -933,21 +933,107 @@ a { text-decoration: none; }
 }
 
 /* ============================================
-   V3: API Proxy Page
+   V3: AT Manager 1:1 组件库
    ============================================ */
-.proxy-service-badge {
+
+/* AT Card */
+.at-card {
+  background: white; border-radius: 12px; border: 1px solid var(--border-color);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04); overflow: hidden;
+}
+.at-card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px; border-bottom: 1px solid var(--border-color);
+  background: #f9fafb;
+}
+.at-card-title-group { display: flex; align-items: center; gap: 12px; }
+.at-card-title {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;
+}
+.at-status-indicator {
+  display: flex; align-items: center; gap: 6px;
+  padding-left: 12px; border-left: 1px solid #e5e7eb;
+}
+.at-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.at-status-dot.online { background: #22c55e; animation: rec-pulse 2s ease-in-out infinite; }
+.at-status-dot.offline { background: #9ca3af; }
+.at-status-text { font-size: 12px; font-weight: 500; color: #6b7280; }
+.at-status-indicator.running .at-status-text { color: #16a34a; }
+
+.at-btn-start {
   display: inline-flex; align-items: center; gap: 6px;
-  padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600;
-  background: #fef2f2; color: #dc2626; border: 1px solid #fecaca;
+  padding: 5px 12px; border-radius: 8px; border: none; cursor: pointer;
+  font-size: 12px; font-weight: 600; color: white;
+  background: #3b82f6; box-shadow: 0 1px 3px rgba(59,130,246,0.3);
+  transition: background 0.2s;
 }
-.proxy-service-badge.running {
-  background: #f0fdf4; color: #16a34a; border-color: #bbf7d0;
+.at-btn-start:hover { background: #2563eb; }
+
+.at-card-body { padding: 12px 16px; }
+
+/* AT 布局网格 */
+.at-config-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.at-config-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.at-divider { border-top: 1px solid #e5e7eb; margin: 12px 0; }
+
+/* AT 字段 */
+.at-field { display: flex; flex-direction: column; gap: 3px; }
+.at-field-toggle { display: flex; align-items: center; padding-top: 16px; }
+.at-field-row { display: flex; align-items: center; justify-content: space-between; }
+.at-toggle-row { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; font-weight: 500; }
+
+.at-label {
+  font-size: 12px; font-weight: 600; color: #374151;
+  display: inline-flex; align-items: center; gap: 3px;
 }
-.proxy-service-badge .dot {
-  width: 8px; height: 8px; border-radius: 50%; display: inline-block;
+.at-tip {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px; border-radius: 50%; border: 1px solid #d1d5db;
+  font-size: 9px; color: #9ca3af; cursor: help; line-height: 1;
 }
-.proxy-service-badge .dot.online { background: #22c55e; }
-.proxy-service-badge .dot.offline { background: #ef4444; }
+.at-hint { font-size: 10px; color: #9ca3af; line-height: 1.4; }
+.at-input {
+  width: 100%; padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 8px;
+  font-size: 12px; color: #111827; background: white;
+  transition: border-color 0.2s;
+}
+.at-input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
+.at-input:disabled { background: #f9fafb; opacity: 0.6; cursor: not-allowed; }
+
+/* AT Key Row */
+.at-key-row { display: flex; gap: 4px; align-items: center; }
+.at-key-input { flex: 1; font-family: 'SF Mono', monospace; font-size: 12px; background: #f9fafb; }
+.at-icon-btn {
+  padding: 6px 8px; border: 1px solid #e5e7eb; border-radius: 6px;
+  background: white; cursor: pointer; font-size: 13px; display: flex; align-items: center;
+  transition: background 0.2s;
+}
+.at-icon-btn:hover { background: #f3f4f6; }
+
+/* AT Collapsible Card */
+.at-collapsible {
+  background: white; border-radius: 12px; border: 1px solid var(--border-color);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04); overflow: hidden; margin-top: 12px;
+  transition: box-shadow 0.2s;
+}
+.at-collapsible:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+.at-collapsible-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; cursor: pointer; background: #f9fafb;
+  transition: background 0.2s;
+}
+.at-collapsible-header:hover { background: #f3f4f6; }
+.at-collapsible-left { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; color: #374151; }
+.at-chevron { transition: transform 0.3s; color: #6b7280; }
+.at-collapsible.expanded .at-chevron { transform: rotate(180deg); }
+.at-collapsible-body {
+  max-height: 0; overflow: hidden; transition: max-height 0.3s, padding 0.3s;
+  border-top: 1px solid var(--border-color);
+}
+.at-collapsible.expanded .at-collapsible-body {
+  max-height: 2000px; padding: 16px;
+}
 
 .proxy-config-grid {
   display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px;
@@ -979,25 +1065,45 @@ a { text-decoration: none; }
 /* ============================================
    V3: Traffic Logs Page (AT Manager 风格)
    ============================================ */
-.logs-header-actions {
-  display: flex; align-items: center; gap: 10px;
+/* Logs page header (AT 同款单行工具栏) */
+#page-logs .page-title-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px;
 }
-.logs-stats {
-  display: flex; gap: 12px; font-size: 13px;
-}
-.logs-stat-item { display: flex; align-items: center; gap: 4px; color: var(--text-secondary); }
-.logs-stat-item strong { font-weight: 700; }
-.logs-stat-ok strong { color: #16a34a; }
-.logs-stat-err strong { color: #ef4444; }
+.logs-title-left { flex-shrink: 0; }
+.logs-title-center { flex: 1; min-width: 200px; }
+.logs-search-input { width: 100%; padding: 8px 14px; font-size: 13px; }
 
-.logs-filter-bar {
-  display: flex; gap: 12px; align-items: center; margin-bottom: 8px;
+/* Recording badge (AT同款: 红色圆点脉冲 + 白底红文) */
+.logs-recording-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 16px; border-radius: 8px; font-size: 13px; font-weight: 600;
+  color: #ef4444; background: #fef2f2; border: 1px solid #fecaca;
+  white-space: nowrap;
 }
-.logs-search-wrap { flex: 1; }
-.logs-search-wrap .input {
-  width: 100%; padding: 8px 14px; font-size: 13px;
-  background: white; border: 1px solid var(--border-color); border-radius: 8px;
+.logs-recording-badge::before {
+  content: ''; width: 8px; height: 8px; border-radius: 50%;
+  background: #ef4444; display: inline-block;
+  animation: rec-pulse 1.5s ease-in-out infinite;
 }
+@keyframes rec-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* Stats tags (AT同款: 内联彩色计数) */
+.logs-stats {
+  display: flex; gap: 8px; font-size: 12px; flex-shrink: 0; align-items: center;
+}
+.logs-stat-item {
+  display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px;
+  border-radius: 4px; white-space: nowrap;
+}
+.logs-stat-item strong { font-weight: 700; }
+.logs-stat-total { color: #3b82f6; }
+.logs-stat-ok { color: #16a34a; }
+.logs-stat-ok strong { color: #16a34a; }
+.logs-stat-err { color: #ef4444; }
+.logs-stat-err strong { color: #ef4444; }
 
 .logs-quick-filters {
   display: flex; align-items: center; gap: 6px; margin-bottom: 12px;
@@ -1056,3 +1162,4 @@ a { text-decoration: none; }
   font-size: 12px; color: var(--text-secondary); border-top: 1px solid var(--border-color);
 }
 .logs-pagination .btn { min-width: 28px; }
+.logs-pagination-detail { margin-left: auto; color: var(--text-muted); font-size: 11px; }
