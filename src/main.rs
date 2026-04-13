@@ -67,6 +67,7 @@ fn main() {
         .route("/api/accounts/{account_id}/refresh", post(api::refresh_account))
         // Quotas
         .route("/api/quotas", get(api::get_quotas))
+        .route("/api/quotas/refresh", post(api::refresh_quotas))
         // Sync & Config
         .route("/api/sync-accounts", post(api::sync_accounts))
         .route("/api/config", get(api::get_config).post(api::save_config))
@@ -79,7 +80,58 @@ fn main() {
         // Frontend (embedded static files) — must be last
         .fallback(api::serve_frontend)
         .layer(CorsLayer::permissive())
-        .with_state(state);
+        .with_state(state.clone());
+
+    // Background quota refresh task (every 5 minutes)
+    let bg_state = state.clone();
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            // Wait for initial server startup
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            loop {
+                tracing::info!("🔄 Background quota refresh starting...");
+                let accounts = bg_state.db.get_all_accounts();
+                for account in &accounts {
+                    let at = match &account.access_token {
+                        Some(t) if !t.is_empty() => t.clone(),
+                        _ => match crate::oauth::refresh_access_token(&account.refresh_token).await {
+                            Ok(tr) => {
+                                let expires_at = chrono::Utc::now() + chrono::Duration::seconds(tr.expires_in);
+                                bg_state.db.upsert_account(&db::Account {
+                                    access_token: Some(tr.access_token.clone()),
+                                    expires_at: Some(expires_at.to_rfc3339()),
+                                    status: "active".into(),
+                                    ..account.clone()
+                                });
+                                tr.access_token
+                            }
+                            Err(e) => {
+                                tracing::warn!("BG refresh failed for {}: {}", account.email, e);
+                                continue;
+                            }
+                        }
+                    };
+
+                    let pid = if account.project_id.is_empty() { None } else { Some(account.project_id.as_str()) };
+                    let (quotas, is_forbidden, _) = crate::quota::fetch_available_models(&at, pid).await;
+                    for q in &quotas {
+                        bg_state.db.save_quota_snapshot(&db::QuotaSnapshot {
+                            account_id: account.account_id.clone(),
+                            email: account.email.clone(),
+                            model_name: q.model.clone(),
+                            utilization: q.utilization,
+                            reset_time: q.reset_time.clone(),
+                            is_forbidden,
+                            ..Default::default()
+                        });
+                    }
+                }
+                tracing::info!("✅ Background quota refresh done ({} accounts)", accounts.len());
+                tokio::time::sleep(std::time::Duration::from_secs(300)).await;
+            }
+        });
+    });
 
     // Start Axum server in background thread
     std::thread::spawn(move || {

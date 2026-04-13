@@ -1,5 +1,5 @@
 // ============================================================
-// NexusGate — REST API 路由
+// GPA Tools — REST API 路由
 // 完整移植自 server.js 的所有 API 端点
 // ============================================================
 
@@ -155,19 +155,21 @@ pub async fn import_tokens(
             ..Default::default()
         });
 
-        // 6. Sync credits
-        if let Some(credit) = sub_info.credits.first() {
-            state.db.upsert_account_credits(&AccountCredits {
-                account_id: account_id.clone(),
-                email: user_info.email.clone(),
-                credits_enabled: true,
-                credit_type: Some(credit.credit_type.clone()),
-                credit_amount: credit.credit_amount,
-                minimum_for_usage: credit.minimum_for_usage,
-                subscription_tier: sub_info.tier.clone(),
-                ..Default::default()
-            });
-        }
+        // 6. Sync credits (always create entry)
+        let credit_amount = sub_info.credits.first().map(|c| c.credit_amount).unwrap_or(0.0);
+        let credit_min = sub_info.credits.first().map(|c| c.minimum_for_usage).unwrap_or(0.0);
+        let credit_type = sub_info.credits.first().map(|c| c.credit_type.clone());
+        let is_paid = sub_info.tier.as_deref().map(|t| t != "FREE").unwrap_or(false);
+        state.db.upsert_account_credits(&AccountCredits {
+            account_id: account_id.clone(),
+            email: user_info.email.clone(),
+            credits_enabled: is_paid, // auto-enable for paid tiers
+            credit_type,
+            credit_amount,
+            minimum_for_usage: credit_min,
+            subscription_tier: sub_info.tier.clone(),
+            ..Default::default()
+        });
 
         tracing::info!("✅ [Import] {} ({}) imported successfully", user_info.email, sub_info.tier.as_deref().unwrap_or("FREE"));
         results.push(ImportResult {
@@ -249,6 +251,75 @@ pub async fn refresh_account(
 pub async fn get_quotas(State(state): State<AppState>) -> Json<Value> {
     let snapshots = state.db.get_latest_quota_snapshots();
     Json(serde_json::to_value(snapshots).unwrap_or(json!([])))
+}
+
+/// 手动刷新所有账号的配额
+pub async fn refresh_quotas(State(state): State<AppState>) -> impl IntoResponse {
+    let accounts = state.db.get_all_accounts();
+    let mut refreshed = 0;
+    let mut errors = 0;
+
+    for account in &accounts {
+        let at = match &account.access_token {
+            Some(t) if !t.is_empty() => t.clone(),
+            _ => {
+                // Try to refresh token first
+                match oauth::refresh_access_token(&account.refresh_token).await {
+                    Ok(tr) => {
+                        let expires_at = chrono::Utc::now() + chrono::Duration::seconds(tr.expires_in);
+                        state.db.upsert_account(&Account {
+                            access_token: Some(tr.access_token.clone()),
+                            expires_at: Some(expires_at.to_rfc3339()),
+                            status: "active".into(),
+                            ..account.clone()
+                        });
+                        tr.access_token
+                    }
+                    Err(_) => { errors += 1; continue; }
+                }
+            }
+        };
+
+        let pid = if account.project_id.is_empty() { None } else { Some(account.project_id.as_str()) };
+        let (quotas, is_forbidden, _) = quota::fetch_available_models(&at, pid).await;
+
+        for q in &quotas {
+            state.db.save_quota_snapshot(&crate::db::QuotaSnapshot {
+                account_id: account.account_id.clone(),
+                email: account.email.clone(),
+                model_name: q.model.clone(),
+                utilization: q.utilization,
+                reset_time: q.reset_time.clone(),
+                is_forbidden,
+                ..Default::default()
+            });
+        }
+
+        if !quotas.is_empty() {
+            refreshed += 1;
+        }
+
+        // Also refresh subscription/credits info
+        let sub_info = quota::fetch_subscription_info(&at).await;
+        let credit_amount = sub_info.credits.first().map(|c| c.credit_amount).unwrap_or(0.0);
+        state.db.upsert_account_credits(&AccountCredits {
+            account_id: account.account_id.clone(),
+            email: account.email.clone(),
+            credits_enabled: true, // keep it enabled
+            credit_type: sub_info.credits.first().map(|c| c.credit_type.clone()),
+            credit_amount,
+            minimum_for_usage: sub_info.credits.first().map(|c| c.minimum_for_usage).unwrap_or(0.0),
+            subscription_tier: sub_info.tier.clone(),
+            ..Default::default()
+        });
+    }
+
+    (StatusCode::OK, Json(json!({
+        "ok": true,
+        "total_accounts": accounts.len(),
+        "refreshed": refreshed,
+        "errors": errors,
+    })))
 }
 
 // ---- Sync from AT Manager ----
